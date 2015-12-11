@@ -63,13 +63,31 @@ namespace zf {
           muon0_pt         .clear();
           muon0_eta        .clear();
           muon0_phi        .clear();
+          muon0_d0         .clear();
+          muon0_dxy        .clear();
+          muon0_dz         .clear();
+          muon0_d0err      .clear();
+          muon0_dxyerr     .clear();
+          muon0_dzerr      .clear();
+          muon0_trkKink    .clear(); 
+          muon0_glbKink    .clear(); 
 
           muon1_pt         .clear();
           muon1_eta        .clear();
           muon1_phi        .clear();
+          muon1_d0         .clear();
+          muon1_dxy        .clear();
+          muon1_dz         .clear();
+          muon1_d0err      .clear();
+          muon1_dxyerr     .clear();
+          muon1_dzerr      .clear();
+          muon1_trkKink    .clear(); 
+          muon1_glbKink    .clear(); 
 
           muon0_charge     .clear();
           muon1_charge     .clear();
+
+          reco_jpsi_soft_id.clear();
         }
         // Constructor
         jpsi_branch() {
@@ -94,15 +112,82 @@ namespace zf {
         std::vector<double> muon0_pt;
         std::vector<double> muon0_eta;
         std::vector<double> muon0_phi;
+        std::vector<double> muon0_d0;
+        std::vector<double> muon0_dxy;
+        std::vector<double> muon0_dz;
+        std::vector<double> muon0_d0err;
+        std::vector<double> muon0_dxyerr;
+        std::vector<double> muon0_dzerr;
+        std::vector<double> muon0_trkKink;
+        std::vector<double> muon0_glbKink;
         std::vector<double> muon1_pt;
         std::vector<double> muon1_eta;
         std::vector<double> muon1_phi;
+        std::vector<double> muon1_d0;
+        std::vector<double> muon1_dxy;
+        std::vector<double> muon1_dz;
+        std::vector<double> muon1_d0err;
+        std::vector<double> muon1_dxyerr;
+        std::vector<double> muon1_dzerr;
+        std::vector<double> muon1_trkKink;
+        std::vector<double> muon1_glbKink;
+        std::vector<double> reco_jpsi_soft_id;
+        std::vector<double> muon0_iso_sum_charged_hadron_pt;                                     
+        std::vector<double> muon0_iso_sum_charged_particle_pt;
+        std::vector<double> muon0_iso_sum_neutral_hadron_et;
+        std::vector<double> muon0_iso_sum_photon_et;
+        std::vector<double> muon0_iso_sum_pileup_pt;
+        std::vector<double> muon0_iso;
+        std::vector<double> muon1_iso_sum_charged_hadron_pt;                                     
+        std::vector<double> muon1_iso_sum_charged_particle_pt;
+        std::vector<double> muon1_iso_sum_neutral_hadron_et;
+        std::vector<double> muon1_iso_sum_photon_et;
+        std::vector<double> muon1_iso_sum_pileup_pt;
+        std::vector<double> muon1_iso;
         std::vector<int>    muon0_charge;
         std::vector<int>    muon1_charge;
         std::vector<int>    has_muons_in_eta_window;
         std::vector<int>    has_high_pt_muons;
-
       } reco_jpsi_, truth_jpsi_, reco_jpsi_from_electrons_;
+
+      struct four_lepton_branch {
+        void clear_values() {
+          muon0_pt .clear();
+          muon1_pt .clear();
+          muon2_pt .clear();
+          muon3_pt .clear();
+          muon0_eta.clear();
+          muon1_eta.clear();
+          muon2_eta.clear();
+          muon3_eta.clear();
+          muon0_phi.clear();
+          muon1_phi.clear();
+          muon2_phi.clear();
+          muon3_phi.clear();
+          vtx_chi2.clear();
+          vtx_ndf.clear();
+          vtx_prob.clear();
+        }
+        // Constructor
+        four_lepton_branch() {
+          clear_values();
+        }
+        std::vector<double> muon0_pt; 
+        std::vector<double> muon1_pt;
+        std::vector<double> muon2_pt; 
+        std::vector<double> muon3_pt;
+        std::vector<double> muon0_eta;
+        std::vector<double> muon1_eta;
+        std::vector<double> muon2_eta;
+        std::vector<double> muon3_eta;
+        std::vector<double> muon0_phi;
+        std::vector<double> muon1_phi;
+        std::vector<double> muon2_phi;
+        std::vector<double> muon3_phi;
+        std::vector<double> vtx_chi2;
+        std::vector<double> vtx_ndf;
+        std::vector<double> vtx_prob;
+      } four_lepton_vertex_;
 
       struct z_branch {
         void clear_values() {
@@ -120,13 +205,33 @@ namespace zf {
           daughter0_pt     .clear();//= -1000;
           daughter0_eta    .clear();//= -1000;
           daughter0_phi    .clear();//= -1000;
+          daughter0_d0     .clear();
+          daughter0_dxy    .clear();
+          daughter0_dz     .clear();
+          daughter0_d0err  .clear();
+          daughter0_dxyerr .clear();
+          daughter0_dzerr  .clear();
+
+          daughter0_trkKink.clear(); 
+          daughter0_glbKink.clear(); 
 
           daughter1_pt     .clear();//= -1000;
           daughter1_eta    .clear();//= -1000;
           daughter1_phi    .clear();//= -1000;
+          daughter1_d0     .clear();
+          daughter1_dxy    .clear();
+          daughter1_dz     .clear();
+          daughter1_d0err  .clear();
+          daughter1_dxyerr .clear();
+          daughter1_dzerr  .clear();
+          daughter1_trkKink.clear(); 
+          daughter1_glbKink.clear(); 
 
           daughter0_charge .clear();//= 0;
           daughter1_charge .clear();//= 0;
+
+          passed_triggers.clear();
+          truth_pdg_id.clear();
         }
         // Constructor
         z_branch() {
@@ -145,11 +250,29 @@ namespace zf {
         std::vector<double> daughter0_pt;
         std::vector<double> daughter0_eta;
         std::vector<double> daughter0_phi;
+        std::vector<double> daughter0_d0;
+        std::vector<double> daughter0_dxy;
+        std::vector<double> daughter0_dz;
+        std::vector<double> daughter0_d0err;
+        std::vector<double> daughter0_dxyerr;
+        std::vector<double> daughter0_dzerr;
+        std::vector<double> daughter0_trkKink;
+        std::vector<double> daughter0_glbKink;
         std::vector<double> daughter1_pt;
         std::vector<double> daughter1_eta;
         std::vector<double> daughter1_phi;
+        std::vector<double> daughter1_d0;
+        std::vector<double> daughter1_dxy;
+        std::vector<double> daughter1_dz;
+        std::vector<double> daughter1_d0err;
+        std::vector<double> daughter1_dxyerr;
+        std::vector<double> daughter1_dzerr;
+        std::vector<double> daughter1_trkKink;
+        std::vector<double> daughter1_glbKink;
         std::vector<double> daughter0_charge;
         std::vector<double> daughter1_charge;
+        std::vector<int>  truth_pdg_id;
+        std::vector<std::string> passed_triggers;
       } reco_z_, reco_z_from_muons_, truth_z_muons_,truth_z_electrons_;
 
       struct event_branch {
@@ -159,17 +282,7 @@ namespace zf {
           run_number                                                                  .clear();//= 0;
           n_verts                                                                     .clear();//= 0;
           found_good_muons_from_z                                                     .clear();//= false;
-          found_dimuon_z_compatible_vertex                                            .clear();//= false;
           found_good_electrons_from_z                                                 .clear();//= false;
-          found_dielectron_z_compatible_vertex                                        .clear();//= false;
-          found_dimuon_jpsi_with_soft_id_and_high_pt_muons                            .clear();//= false;
-          found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex                .clear();//= false;
-          found_good_dimuon_jpsi_compatible_with_primary_vertex                       .clear();//= false;
-          found_dimuon_jpsi_from_electrons_with_muons_in_eta_window                   .clear();//= false;
-          found_dimuon_jpsi_from_electrons_with_high_pt_muons                         .clear();//= false;
-          found_dimuon_jpsi_from_electrons_with_soft_id_and_high_pt_muons             .clear();//= false;
-          found_dimuon_jpsi_from_electrons_with_good_muons_and_compatible_muon_vertex .clear();//= false;
-          found_good_dimuon_jpsi_from_electrons_compatible_with_primary_vertex        .clear();//= false;
         }
 
         // Constructor
@@ -181,17 +294,7 @@ namespace zf {
         std::vector<unsigned int>  run_number;
         std::vector<int>           n_verts;
         std::vector<bool>          found_good_muons_from_z;
-        std::vector<bool>          found_dimuon_z_compatible_vertex;
         std::vector<bool>          found_good_electrons_from_z;
-        std::vector<bool>          found_dielectron_z_compatible_vertex;
-        std::vector<bool>          found_dimuon_jpsi_with_soft_id_and_high_pt_muons;
-        std::vector<bool>          found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex;
-        std::vector<bool>          found_good_dimuon_jpsi_compatible_with_primary_vertex;
-        std::vector<bool>          found_dimuon_jpsi_from_electrons_with_muons_in_eta_window;
-        std::vector<bool>          found_dimuon_jpsi_from_electrons_with_high_pt_muons;
-        std::vector<bool>          found_dimuon_jpsi_from_electrons_with_soft_id_and_high_pt_muons;
-        std::vector<bool>          found_dimuon_jpsi_from_electrons_with_good_muons_and_compatible_muon_vertex;
-        std::vector<bool>          found_good_dimuon_jpsi_from_electrons_compatible_with_primary_vertex;
 
       } event_;
 

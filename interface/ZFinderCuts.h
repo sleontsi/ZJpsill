@@ -32,5 +32,21 @@ namespace zf {
   const double MAX_JPSI_RAP = 2.4; //
   const double MAX_DELTAR_TRUTH_MATCHED_JPSI_MUONS = 0.015;
   const double MIN_DELTAR_DISTINCT_Z_JPSI_MUONS = 0.015;
+
+//  const bool is_Zee      = false;
+//  const bool is_Jpsiee   = true;
+//  const bool is_Zmumu    = true;
+//  const bool is_Jpsimumu = false;
+
+  const bool is_Zee      = true;
+  const bool is_Jpsiee   = false;
+  const bool is_Zmumu    = false;
+  const bool is_Jpsimumu = true;
+
+//  const bool is_Zee      = true;
+//  const bool is_Jpsiee   = true;
+//  const bool is_Zmumu    = false;
+//  const bool is_Jpsimumu = false;
+
 }
 #endif  // ZFINDER_ZFINDERCUTS_H_

@@ -81,6 +81,9 @@ namespace zf {
       // Data or MC
       bool is_real_data;
 
+      // truth vector
+      std::vector<int> PDG_id;
+
       // Beam Spot
       struct Beamspot{
         double x;
@@ -121,13 +124,49 @@ namespace zf {
         std::vector<double> muon1_eta;
         std::vector<double> muon0_phi;
         std::vector<double> muon1_phi;
+        std::vector<double> muon0_d0;
+        std::vector<double> muon1_d0;
+        std::vector<double> muon0_dxy;
+        std::vector<double> muon1_dxy;
+        std::vector<double> muon0_dz;
+        std::vector<double> muon1_dz;
+        std::vector<double> muon0_d0err;
+        std::vector<double> muon1_d0err;
+        std::vector<double> muon0_dxyerr;
+        std::vector<double> muon1_dxyerr;
+        std::vector<double> muon0_dzerr;
+        std::vector<double> muon1_dzerr;
+        std::vector<double> muon0_trkKink;
+        std::vector<double> muon1_trkKink;
+        std::vector<double> muon0_glbKink;
+        std::vector<double> muon1_glbKink;
         std::vector<double> vtx_prob;
-        double vtx_x;
-        double vtx_y;
-        double vtx_z;
+        std::vector<double> vtx_x;
+        std::vector<double> vtx_y;
+        std::vector<double> vtx_z;
+        std::vector<std::string> trigger_list;
         math::PtEtaPhiMLorentzVector zlv;
         TransientVertex vtx;
       } reco_z, reco_z_from_muons, truth_z_muons, truth_z_electrons;
+
+      struct FourLeptonData{
+        std::vector<double> muon0_pt;
+        std::vector<double> muon1_pt;
+        std::vector<double> muon2_pt;
+        std::vector<double> muon3_pt;
+        std::vector<double> muon0_eta;
+        std::vector<double> muon1_eta;
+        std::vector<double> muon2_eta;
+        std::vector<double> muon3_eta;
+        std::vector<double> muon0_phi;
+        std::vector<double> muon1_phi;
+        std::vector<double> muon2_phi;
+        std::vector<double> muon3_phi;
+        std::vector<double> vtx_chi2;
+        std::vector<double> vtx_ndf;
+        std::vector<double> vtx_prob;
+      } four_lepton_vertex;
+
 
       // JPsi Data
       struct JPsiData{
@@ -169,6 +208,24 @@ namespace zf {
         std::vector<double> muon1_eta;
         std::vector<double> muon0_phi;
         std::vector<double> muon1_phi;
+        std::vector<double> muon0_d0;
+        std::vector<double> muon1_d0;
+        std::vector<double> muon0_dxy;
+        std::vector<double> muon1_dxy;
+        std::vector<double> muon0_dz;
+        std::vector<double> muon1_dz;
+        std::vector<double> muon0_d0err;
+        std::vector<double> muon1_d0err;
+        std::vector<double> muon0_dxyerr;
+        std::vector<double> muon1_dxyerr;
+        std::vector<double> muon0_dzerr;
+        std::vector<double> muon1_dzerr;
+        std::vector<double> muon0_trkKink;
+        std::vector<double> muon1_trkKink;
+        std::vector<double> muon0_glbKink;
+        std::vector<double> muon1_glbKink;
+        std::vector<double> muon0_charge;
+        std::vector<double> muon1_charge;
         std::vector<double> jpsi_acc_eff;
         std::vector<double> muon0_efficiency;
         std::vector<double> muon1_efficiency;
@@ -176,8 +233,6 @@ namespace zf {
         std::vector<double> muon1_scale_factor;
         std::vector<double> muon0_deltaR_to_z_muons;
         std::vector<double> muon1_deltaR_to_z_muons;
-        std::vector<double> muon0_deltaR_to_truth_muons;
-        std::vector<double> muon1_deltaR_to_truth_muons;
         std::vector<double> iso_mu0;
         std::vector<double> iso_sum_charged_hadron_pt_mu0;
         std::vector<double> iso_sum_charged_particle_pt_mu0;
@@ -285,16 +340,7 @@ namespace zf {
       bool found_dielectron_z_compatible_vertex; 
       bool found_z_to_electrons_mass;
 
-      std::vector<bool> found_dimuon_jpsi_with_soft_id_and_high_pt_muons;
-      std::vector<bool> found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex;
-      std::vector<bool> found_good_dimuon_jpsi_compatible_with_primary_vertex;
       bool found_jpsi;
-
-
-      //TODO jpsi->ee
-      bool found_dimuon_jpsi_from_electrons_with_soft_id_and_high_pt_muons;
-      bool found_dimuon_jpsi_from_electrons_with_good_muons_and_compatible_muon_vertex;
-      bool found_good_dimuon_jpsi_from_electrons_compatible_with_primary_vertex;
       bool found_jpsi_from_electrons;
       //--------------
 

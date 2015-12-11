@@ -65,13 +65,6 @@ class ZFinder : public edm::EDAnalyzer {
 
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
-    //TODO TESTING HLT PRESCALE
-    //std::string triggerName ;
-    //std::string hltMenuLabel_;
-    //HLTConfigProvider hltConfig_;
-    //std::pair<int,int> pair2;
-    //////////////////////////
-
   private:
     virtual void beginJob() ;
     virtual void analyze(const edm::Event&, const edm::EventSetup&);
@@ -107,22 +100,13 @@ class ZFinder : public edm::EDAnalyzer {
 // constructors and destructor
 //
 ZFinder::ZFinder(const edm::ParameterSet& iConfig) : iConfig_(iConfig) {
-  //now do what ever initialization is needed
-
-  //hltMenuLabel_ = iConfig.getParameter<std::string>("HLTMenuLabel");
-  //hltMenuLabel_ = iConfig.getParameter<std::string>("hltTriggerSummaryAOD");
-  //hltMenuLabel_ = iConfig.getParameter<std::string>("HLT");
-  //std::pair<int,int> prescaleValues(iEvent, iSetup, triggerName);
-  /////////////////////////////////////////////////////////
 
   // Setup plotters
   edm::Service<TFileService> fs;
 
   TFileDirectory tdir_tree(fs->mkdir("Tree"));
 
-  //zf::ZFinderTree* z_tree = new zf::ZFinderTree(*zd_reco, tdir_zd, is_mc_);
-  z_tree = new zf::ZFinderTree(tdir_tree, false);
-  //z_tuples_.push_back(z_tree);
+  z_tree = new zf::ZFinderTree(tdir_tree, true);
 
 }
 
@@ -142,49 +126,35 @@ void ZFinder::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   using namespace edm;
   using namespace zf;
 
-
-  //TODO TESTING ability to print prescale //
-  //// Combined L1T (pair.first) and HLT (pair.second) prescales per HLT path
-  ////std::pair<int,int> prescaleValues(const edm::Event& iEvent, const edm::EventSetup& iSetup, const std::string& trigger) const;
-  ////hltConfig_.init(iRun,iSetup,processName_,changed)
-  ////triggerName = "HLT_Dimuon0_Jpsi_v18";
-  //triggerName = "HLT_Dimuon0_Jpsi_v15"; //this one worked! 1 200
-  ////pair = hltConfig_.prescaleValues(iEvent, iSetup, triggerName);
-  //std::cout << "testA" << std::endl;
-  //pair2 = hltConfig_.prescaleValues(iEvent, iSetup, triggerName);
-  //std::cout << "testB" << std::endl;
-  ////std::cout << "Trigger prescales: " << pair2 << std::endl;
-  //std::cout << "Trigger prescales: " << pair2.first << " and second " << pair2.second << std::endl;
-  ////pair = HLTConfigProvider::prescaleValues(iEvent, iSetup, triggerName);
-  //// any one negative => error in retrieving this (L1T or HLT) prescale
-  // ///////////////////////////////////////////////////////////////////
+//  if (iEvent.id().event() < 1081870)
+//    return;
+//
+//  if (iEvent.id().event() == 1081878)
+//   std::printf("------------------------> entered the bad event\n"); 
+//
+//  std::printf("%d\n", iEvent.id().event());
 
   zf::ZFinderEvent zfe(iEvent, iSetup, iConfig_);
 
-// muons
-//  std::printf("%d %d\n", zfe.found_jpsi, zfe.found_z_to_muons_mass);
-  if (!zfe.found_jpsi)                                                                        
-    return;                                                                                                                           
-//  if (!zfe.found_z_to_muons_mass)
-//    return;
-
-//  if (!zfe.found_jpsi_from_electrons)
-//    return;
-  if (!zfe.found_z_to_electrons_mass)
-    return;
+  if (is_Jpsimumu) {
+    if (!zfe.found_jpsi)                                                                        
+      return;
+  }   
+  if (is_Zmumu) {                                                                                                                        
+    if (!zfe.found_z_to_muons_mass)
+      return;
+  }
+  if (is_Jpsiee) {
+    if (!zfe.found_jpsi_from_electrons)
+      return;
+  }
+  if (is_Zee) {
+    if (!zfe.found_z_to_electrons_mass)
+     return;
+  }
 
   //Fill Tree
   z_tree->Fill(zfe);
-
-
-  //Fill histograms
-//  zfp_all->Fill(zfe);
-//  zfp_all_mc->Fill(zfe);
-
-//  if ( zfe.found_truth_jpsi_with_high_pt_muons ) {
-//    zfp_jpsi_mc->Fill(zfe);
-//  }
-
 }
 
 // ------------ method called once each job just before starting event loop  ------------
@@ -193,44 +163,11 @@ void ZFinder::beginJob() {
 
 // ------------ method called once each job just after ending the event loop  ------------
 void ZFinder::endJob() {
-  //// Since large trees will automatically make new files, we need to get
-  //// the current file from each tree and write it, but only if it is new
-  //// and hasn't be previously written
-  //TFile* file = nullptr;
-  //std::vector<TFile*> seen;
-
-
-  ////for (auto& i_zdeft : z_tuples_) {
-  ////  file = i_zdeft->GetCurrentFile();
-  ////  // Check if we have seen this file before. If we have not then
-  ////  // write the file and add it to the vector
-  ////  if (std::find(seen.begin(), seen.end(), file) == seen.end()) {
-  ////    file->Write();
-  ////    seen.push_back(file);
-  ////  }
-  ////}
-  //file = z_tree->GetCurrentFile();
-  //// Check if we have seen this file before. If we have not then
-  //// write the file and add it to the vector
-  //if (std::find(seen.begin(), seen.end(), file) == seen.end()) {
-  //  file->Write();
-  //  seen.push_back(file);
-  //}
 }
 
 // ------------ method called when starting to processes a run  ------------
 //void ZFinder::beginRun(edm::Run const&, edm::EventSetup const&) {
 void ZFinder::beginRun(edm::Run const& iRun, edm::EventSetup const& iSetup) {
-  //TODO TESTING ??? ///
-  //bool changed = true;
-  ////string hltMenuLabel2_ = "test";
-  ////hltMenuLabel_ = "hltTriggerSummaryAOD";
-  //hltMenuLabel_ = "HLT";
-  ////if (hltConfig_.init(iRun, iSetup, hltMenuLabel_, changed) ) {
-  //if (hltConfig_.init(iRun, iSetup, hltMenuLabel_, changed) ) {
-  //
-  //}
-  /////////////////////////////////////////////////////////////////
 }
 
 // ------------ method called when ending the processing of a run  ------------
@@ -247,8 +184,6 @@ void ZFinder::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup co
 
 // ------------ method fills 'descriptions' with the allowed parameters for the module  ------------
 void ZFinder::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
-  //The following says we do not know what parameters are allowed so do no validation
-  // Please change this to state exactly what you do use, even if it is no parameters
   edm::ParameterSetDescription desc;
   desc.setUnknown();
   descriptions.addDefault(desc);

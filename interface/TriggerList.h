@@ -51,6 +51,7 @@ namespace zf {
     //"hltL3pfL1DoubleMu10MuOpenL1f0L2pf0L3PreFiltered8"
     //"hltL3pfL1DoubleMu10MuOpenOR3p5L1f0L2pf0L3PreFiltered17"
     //"hltL3fL1DoubleMu10MuOpenOR3p5L1f0L2f10L3Filtered17"
+    "HLT_Mu8_v18",
     "hltL3fL1DoubleMu10MuOpenL1f0L2f10L3Filtered17",
     "hltL3fL1DoubleMu10MuOpenOR3p5L1f0L2f10L3Filtered17"
   };

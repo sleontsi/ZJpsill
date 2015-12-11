@@ -30,6 +30,7 @@
 #include "DataFormats/GsfTrackReco/interface/GsfTrack.h"
 #include "DataFormats/GsfTrackReco/interface/GsfTrackFwd.h"
 #include "DataFormats/MuonReco/interface/MuonSelectors.h"
+#include "DataFormats/MuonReco/interface/MuonQuality.h"
 
 #include "RecoVertex/VertexTools/interface/VertexDistance3D.h"
 #include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
@@ -100,19 +101,6 @@ namespace zf {
     inputtags_.pileup = iConfig.getParameter<edm::InputTag>("pileupInputTag");
     inputtags_.generator = iConfig.getParameter<edm::InputTag>("generatorInputTag");
 
-    //TODO testing
-    //edm::InputTag hltInputTag("TriggerResults","","HLT");
-    //edm::Handle<edm::TriggerResults> triggerResults;
-    //iEvent.getByLabel(hltInputTag, triggerResults);
-    //const edm::TriggerNames& names = iEvent.triggerNames(*triggerResults);
-    //for (int i = 0; i < (int) triggerResults->size(); ++i) { // you might have to do (int) triggerResults->size() - 1??
-    //  if (!(triggerResults->accept(i))) {
-    //    std::cout << "Trigger " << names.triggerName(i) << " did not pass" << std::endl;
-    //  } else {
-    //    std::cout << "Trigger " << names.triggerName(i) << " passed" << std::endl;
-    //  }
-    //}
-
     // Set up the lumi reweighting, but only if it is MC.
     if (!is_real_data && lumi_weights_ == NULL) {
       const std::string PILEUP_ERA = iConfig.getParameter<std::string>("pileup_era");
@@ -155,7 +143,20 @@ namespace zf {
       InitTruth(iEvent, iSetup);  // MC
     }
     InitReco(iEvent, iSetup);  // Data
-    InitTrigger(iEvent, iSetup);  // Trigger Matching
+//    InitTrigger(iEvent, iSetup);  // Trigger Matching
+
+    // new part for triggers enabled
+    edm::InputTag hltInputTag("TriggerResults","","HLT");
+    edm::Handle<edm::TriggerResults> triggerResults;
+    iEvent.getByLabel(hltInputTag, triggerResults);
+    const edm::TriggerNames& names = iEvent.triggerNames(*triggerResults);
+    reco_z_from_muons.trigger_list.clear();
+    for (int i = 0; i < (int) triggerResults->size(); ++i) 
+      if (triggerResults->accept(i) && names.triggerName(i).find("HLT") != std::string::npos
+        && (names.triggerName(i).find("Mu") != std::string::npos || names.triggerName(i).find("Ele") != std::string::npos)) 
+        reco_z_from_muons.trigger_list.push_back(names.triggerName(i));
+//        std::cout << "Trigger " << names.triggerName(i) << " did not pass" << std::endl;
+    // end of triggers
   }
 
   void ZFinderEvent::SetLumiEventWeight(const edm::Event& iEvent) {
@@ -250,11 +251,184 @@ namespace zf {
       found_four_muons = true;
     }
 
+    // sleontsi four lepton track vertex
+    if (is_Zmumu && is_Jpsimumu) {
+      if (n_reco_muons >= 4) {
+        edm::ESHandle<TransientTrackBuilder> four_track_builder;
+        iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder", four_track_builder);
+        std::vector<reco::TransientTrack> transient_tracks_four_muons;
+        for ( int i0=0 ; i0 < (n_reco_muons - 3) ; ++i0 ) {
+          const reco::Muon muon0_4 = muons_h->at(i0);
+  
+          for ( int i1=i0+1 ; i1 < n_reco_muons ; ++i1 ) {
+            const reco::Muon muon1_4 = muons_h->at(i1);
+  
+            for ( int i2=i1+1 ; i2 < n_reco_muons ; ++i2 ) {
+              const reco::Muon muon2_4 = muons_h->at(i2);
+    
+              for ( int i3=i2+1 ; i3 < n_reco_muons ; ++i3 ) {
+                const reco::Muon muon3_4 = muons_h->at(i3);
+  
+                if ( (muon0_4.charge() + muon1_4.charge() + muon2_4.charge() + muon3_4.charge()) != 0 )
+                  continue;
+      
+                reco::TrackRef four_muon_track0 = GetMuonTrackRef( muon0_4 );
+                reco::TrackRef four_muon_track1 = GetMuonTrackRef( muon1_4 );
+                reco::TrackRef four_muon_track2 = GetMuonTrackRef( muon2_4 );
+                reco::TrackRef four_muon_track3 = GetMuonTrackRef( muon3_4 );
+      
+                transient_tracks_four_muons.clear();
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track0.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track1.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track2.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track3.get()));
+                TransientVertex four_muon_vertex;
+                if (transient_tracks_four_muons.size() > 1) {
+                  KalmanVertexFitter kalman_fitter;
+                  four_muon_vertex = kalman_fitter.vertex(transient_tracks_four_muons);
+                  four_lepton_vertex.muon0_pt .push_back(muon0_4.pt()); 
+                  four_lepton_vertex.muon1_pt .push_back(muon1_4.pt()); 
+                  four_lepton_vertex.muon2_pt .push_back(muon2_4.pt()); 
+                  four_lepton_vertex.muon3_pt .push_back(muon3_4.pt()); 
+                  four_lepton_vertex.muon0_eta.push_back(muon0_4.eta());
+                  four_lepton_vertex.muon1_eta.push_back(muon1_4.eta());
+                  four_lepton_vertex.muon2_eta.push_back(muon2_4.eta());
+                  four_lepton_vertex.muon3_eta.push_back(muon3_4.eta());
+                  four_lepton_vertex.muon0_phi.push_back(muon0_4.phi());
+                  four_lepton_vertex.muon1_phi.push_back(muon1_4.phi());
+                  four_lepton_vertex.muon2_phi.push_back(muon2_4.phi());
+                  four_lepton_vertex.muon3_phi.push_back(muon3_4.phi());
+                  four_lepton_vertex.vtx_chi2 .push_back(four_muon_vertex.totalChiSquared());
+                  four_lepton_vertex.vtx_ndf  .push_back(four_muon_vertex.degreesOfFreedom());
+                  four_lepton_vertex.vtx_prob .push_back(TMath::Prob(four_muon_vertex.totalChiSquared(),(int)four_muon_vertex.degreesOfFreedom()));
+                }
+              }
+            }
+          } 
+        }
+      }
+    }
+
+    if ((is_Zmumu && is_Jpsiee) || (is_Zee && is_Jpsimumu)) {
+      if (n_reco_muons >= 2 && n_reco_jpsi_from_electrons>= 2) {
+        edm::ESHandle<TransientTrackBuilder> four_track_builder;
+        iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder", four_track_builder);
+        std::vector<reco::TransientTrack> transient_tracks_four_muons;
+        for ( int i0=0 ; i0 < n_reco_muons ; ++i0 ) {
+          const reco::Muon muon0_4 = muons_h->at(i0);
+  
+          for ( int i1=i0+1 ; i1 < n_reco_muons ; ++i1 ) {
+            const reco::Muon muon1_4 = muons_h->at(i1);
+  
+            for ( int i2=0 ; i2 < n_reco_jpsi_from_electrons ; ++i2 ) {
+              const reco::GsfElectron muon2_4 = electrons_h->at(i2);
+    
+              for ( int i3=i2+1 ; i3 < n_reco_jpsi_from_electrons ; ++i3 ) {
+                const reco::GsfElectron muon3_4 = electrons_h->at(i3);
+  
+                if ( (muon0_4.charge() + muon1_4.charge() + muon2_4.charge() + muon3_4.charge()) != 0 )
+                  continue;
+      
+                reco::TrackRef four_muon_track0 = GetMuonTrackRef( muon0_4 );
+                reco::TrackRef four_muon_track1 = GetMuonTrackRef( muon1_4 );
+                reco::GsfTrackRef four_muon_track2 = muon2_4.gsfTrack();
+                reco::GsfTrackRef four_muon_track3 = muon3_4.gsfTrack();
+      
+                transient_tracks_four_muons.clear();
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track0.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track1.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track2.get()));
+                transient_tracks_four_muons.push_back( (*four_track_builder).build(four_muon_track3.get()));
+                TransientVertex four_muon_vertex;
+                if (transient_tracks_four_muons.size() > 1) {
+                 KalmanVertexFitter kalman_fitter;
+                  four_muon_vertex = kalman_fitter.vertex(transient_tracks_four_muons);
+                  four_lepton_vertex.muon0_pt .push_back(muon0_4.pt()); 
+                  four_lepton_vertex.muon1_pt .push_back(muon1_4.pt()); 
+                  four_lepton_vertex.muon2_pt .push_back(muon2_4.pt()); 
+                  four_lepton_vertex.muon3_pt .push_back(muon3_4.pt()); 
+                  four_lepton_vertex.muon0_eta.push_back(muon0_4.eta());
+                  four_lepton_vertex.muon1_eta.push_back(muon1_4.eta());
+                  four_lepton_vertex.muon2_eta.push_back(muon2_4.eta());
+                  four_lepton_vertex.muon3_eta.push_back(muon3_4.eta());
+                  four_lepton_vertex.muon0_phi.push_back(muon0_4.phi());
+                  four_lepton_vertex.muon1_phi.push_back(muon1_4.phi());
+                  four_lepton_vertex.muon2_phi.push_back(muon2_4.phi());
+                  four_lepton_vertex.muon3_phi.push_back(muon3_4.phi());
+                  four_lepton_vertex.vtx_chi2 .push_back(four_muon_vertex.totalChiSquared());
+                  four_lepton_vertex.vtx_ndf  .push_back(four_muon_vertex.degreesOfFreedom());
+                  four_lepton_vertex.vtx_prob .push_back(TMath::Prob(four_muon_vertex.totalChiSquared(),(int)four_muon_vertex.degreesOfFreedom()));
+                }
+              }
+            }
+          } 
+        }
+      }
+    }
+
+    if (is_Zee && is_Jpsiee) {
+      if (n_reco_jpsi_from_electrons >= 4) {
+        edm::ESHandle<TransientTrackBuilder> four_track_builder;
+        iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder", four_track_builder);
+        std::vector<reco::TransientTrack> transient_tracks_four_electrons;
+        for ( int i0=0 ; i0 < (n_reco_jpsi_from_electrons - 3) ; ++i0 ) {
+          const reco::GsfElectron muon0_4 = electrons_h->at(i0);
+  
+          for ( int i1=i0+1 ; i1 < n_reco_jpsi_from_electrons ; ++i1 ) {
+            const reco::GsfElectron muon1_4 = electrons_h->at(i1);
+  
+            for ( int i2=i1+1 ; i2 < n_reco_jpsi_from_electrons ; ++i2 ) {
+              const reco::GsfElectron muon2_4 = electrons_h->at(i2);
+    
+              for ( int i3=i2+1 ; i3 < n_reco_jpsi_from_electrons ; ++i3 ) {
+                const reco::GsfElectron muon3_4 = electrons_h->at(i3);
+  
+                if ( (muon0_4.charge() + muon1_4.charge() + muon2_4.charge() + muon3_4.charge()) != 0 )
+                  continue;
+      
+                reco::GsfTrackRef four_muon_track0 = muon0_4.gsfTrack();
+                reco::GsfTrackRef four_muon_track1 = muon1_4.gsfTrack();
+                reco::GsfTrackRef four_muon_track2 = muon2_4.gsfTrack();
+                reco::GsfTrackRef four_muon_track3 = muon3_4.gsfTrack();
+      
+                transient_tracks_four_electrons.clear();
+                transient_tracks_four_electrons.push_back( (*four_track_builder).build(four_muon_track0.get()));
+                transient_tracks_four_electrons.push_back( (*four_track_builder).build(four_muon_track1.get()));
+                transient_tracks_four_electrons.push_back( (*four_track_builder).build(four_muon_track2.get()));
+                transient_tracks_four_electrons.push_back( (*four_track_builder).build(four_muon_track3.get()));
+                TransientVertex four_electron_vertex;
+                if (transient_tracks_four_electrons.size() > 1) {
+                  KalmanVertexFitter kalman_fitter;
+                  four_electron_vertex = kalman_fitter.vertex(transient_tracks_four_electrons);
+                  four_lepton_vertex.muon0_pt .push_back(muon0_4.pt()); 
+                  four_lepton_vertex.muon1_pt .push_back(muon1_4.pt()); 
+                  four_lepton_vertex.muon2_pt .push_back(muon2_4.pt()); 
+                  four_lepton_vertex.muon3_pt .push_back(muon3_4.pt()); 
+                  four_lepton_vertex.muon0_eta.push_back(muon0_4.eta());
+                  four_lepton_vertex.muon1_eta.push_back(muon1_4.eta());
+                  four_lepton_vertex.muon2_eta.push_back(muon2_4.eta());
+                  four_lepton_vertex.muon3_eta.push_back(muon3_4.eta());
+                  four_lepton_vertex.muon0_phi.push_back(muon0_4.phi());
+                  four_lepton_vertex.muon1_phi.push_back(muon1_4.phi());
+                  four_lepton_vertex.muon2_phi.push_back(muon2_4.phi());
+                  four_lepton_vertex.muon3_phi.push_back(muon3_4.phi());
+                  four_lepton_vertex.vtx_chi2 .push_back(four_electron_vertex.totalChiSquared());
+                  four_lepton_vertex.vtx_ndf  .push_back(four_electron_vertex.degreesOfFreedom());
+                  four_lepton_vertex.vtx_prob .push_back(TMath::Prob(four_electron_vertex.totalChiSquared(),(int)four_electron_vertex.degreesOfFreedom()));
+                }
+              }
+            }
+          } 
+        }
+      }
+    }
+
+    // ends here
+
     //Make a Z candidate from the two highest pT oppositely charged muons
     if ( n_reco_muons >= 2 ) {
       for (int i=0; i < n_reco_muons; ++i) {
         for (int i2=i+1; i2 < n_reco_muons; ++i2) {
-//          std::printf("%d%d%d\n", n_reco_muons, i, i2);
           const reco::Muon muon_temp0 = muons_h->at(i);
           z_muon0 = muon_temp0;
           const reco::Muon muon_temp1 = muons_h->at(i2);
@@ -275,7 +449,6 @@ namespace zf {
          InitZFromElectrons(iEvent, iSetup);
         }
       }
-
     }
 
     //Z to muons cut levels
@@ -289,14 +462,14 @@ namespace zf {
         z_muon0.pt() >= MIN_Z_MUON_PT && z_muon1.pt() >= MIN_Z_MUON_PT ) {
       found_high_pt_muons_from_z = true;
     }
-    if (reco_z_from_muons.m > -1 && 
-        muon::isTightMuon(z_muon0, reco_vert.primary_vert ) &&
-        muon::isTightMuon(z_muon1, reco_vert.primary_vert ) &&
-        //muon::isTightMuon(z_muon1, reco_vert.primary_vert ) &&
-        TriggerMatch(iEvent, DOUBLE_MUON_TIGHT_LEG_TRIGGER, z_muon0.eta(), z_muon0.phi(), TRIG_DR_) &&
-        TriggerMatch(iEvent, DOUBLE_MUON_LOOSE_LEG_TRIGGER, z_muon1.eta(), z_muon1.phi(), TRIG_DR_) ) {
-      found_good_muons_from_z = true;
-    }
+//    if (reco_z_from_muons.m > -1 && 
+//        muon::isTightMuon(z_muon0, reco_vert.primary_vert ) &&
+//        muon::isTightMuon(z_muon1, reco_vert.primary_vert ) &&
+//        //muon::isTightMuon(z_muon1, reco_vert.primary_vert ) &&
+//        TriggerMatch(iEvent, DOUBLE_MUON_TIGHT_LEG_TRIGGER, z_muon0.eta(), z_muon0.phi(), TRIG_DR_) &&
+//        TriggerMatch(iEvent, DOUBLE_MUON_LOOSE_LEG_TRIGGER, z_muon1.eta(), z_muon1.phi(), TRIG_DR_) ) {
+//      found_good_muons_from_z = true;
+//    }
     if (reco_z_from_muons.m > -1)// sleontsi doesn't work && 
 //        reco_z_from_muons.vtx_prob >= MIN_VERTEX_PROB ) {
       found_dimuon_z_compatible_vertex = true;
@@ -346,11 +519,9 @@ namespace zf {
       // Set up the JPsi
       for ( int i=0 ; i < (n_reco_muons - 1) ; ++i ) {
         const reco::Muon muon0 = muons_h->at(i);
-        //Ensure that muons are not shared between JPsi and Z candidates
+
         for ( int j=i+1 ; j < n_reco_muons ; ++j ) {
           const reco::Muon muon1 = muons_h->at(j);
-          //Ensure that muons are not shared between JPsi and Z candidates
-          //Ensure oppositely charged muons for jpsi candidates
           if ( muon0.charge() ==  muon1.charge() ) {
             continue;
           }
@@ -385,18 +556,9 @@ namespace zf {
       // Set up the JPsi
       for ( int i=0 ; i < (n_reco_jpsi_from_electrons - 1) ; ++i ) {
         const reco::GsfElectron e0 = electrons_h->at(i);
-        //Ensure that muons are not shared between JPsi and Z candidates
         
-        //if (found_z_to_muons_mass && (i == leading_z_muon_list_position || i == sub_leading_z_muon_list_position)) {
-        //  continue;
-        //}
         for ( int j=i+1 ; j < n_reco_jpsi_from_electrons ; ++j ) {
           const reco::GsfElectron e1 = electrons_h->at(j);
-          //Ensure that muons are not shared between JPsi and Z candidates
-          //if (found_z_to_muons_mass && (j == leading_z_muon_list_position || j == sub_leading_z_muon_list_position)) {
-          //  continue;
-          //}
-          //Ensure oppositely charged muons for jpsi candidates
           if ( e0.charge() ==  e1.charge() ) {
             continue;
           }
@@ -423,59 +585,23 @@ namespace zf {
       }
     }
 
-    for (unsigned int i = 0 ; i < reco_jpsi.muon0.size() ; ++i) {
-      reco_jpsi.muon0_deltaR_to_truth_muons.push_back( JpsiMuonTruthMatch(reco_jpsi.muon0.at(i)) ) ;
-    }
-    for (unsigned int i = 0 ; i < reco_jpsi.muon1.size() ; ++i) {
-      reco_jpsi.muon1_deltaR_to_truth_muons.push_back( JpsiMuonTruthMatch(reco_jpsi.muon1.at(i)) ) ;
-    }
-    InitJets(iEvent, iSetup);
+//    InitJets(iEvent, iSetup);
  
     //Set cut level flags for jpsi candidates
     //Note that to pass multiple cut stages the same jpsi candidate should pass all stages
     
-    found_dimuon_jpsi_with_soft_id_and_high_pt_muons.clear();// = false;
-    found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex.clear(); // = false;
-    found_good_dimuon_jpsi_compatible_with_primary_vertex.clear();// = false;
     found_jpsi = false;
     for (unsigned int i = 0; i < reco_jpsi.m.size() ; ++i ) {
       if (reco_jpsi.is_within_jpsi_mass_window.at(i) )
         found_jpsi = true;
-      if (reco_jpsi.has_soft_id_muons.at(i) ) 
-        found_dimuon_jpsi_with_soft_id_and_high_pt_muons.push_back(true);
-      else
-        found_dimuon_jpsi_with_soft_id_and_high_pt_muons.push_back(false);
-      if (reco_jpsi.has_muons_with_compatible_vertex.at(i)) 
-        found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex.push_back(true);
-      else
-        found_dimuon_jpsi_with_good_muons_and_compatible_muon_vertex.push_back(false);
-      if (reco_jpsi.has_dimuon_vertex_compatible_with_primary_vertex.at(i)) 
-        found_good_dimuon_jpsi_compatible_with_primary_vertex.push_back(true);
-      else
-        found_good_dimuon_jpsi_compatible_with_primary_vertex.push_back(false);
     }
 
     //TODO jpsi->ee
     //------------------------------------------------------------------------------
-    found_dimuon_jpsi_from_electrons_with_soft_id_and_high_pt_muons = false;
-    found_dimuon_jpsi_from_electrons_with_good_muons_and_compatible_muon_vertex = false;
-    found_good_dimuon_jpsi_from_electrons_compatible_with_primary_vertex = false;
     found_jpsi_from_electrons = false;
     for (unsigned int i = 0; i < reco_jpsi_from_electrons.m.size() ; ++i ) {
       if (reco_jpsi_from_electrons.is_within_jpsi_mass_window.at(i) ) 
         found_jpsi_from_electrons = true;
-        if (reco_jpsi_from_electrons.has_soft_id_muons.at(i) ) {
-          found_dimuon_jpsi_from_electrons_with_soft_id_and_high_pt_muons = true;
-          if (reco_jpsi_from_electrons.has_muons_with_compatible_vertex.at(i) ) {
-            found_dimuon_jpsi_from_electrons_with_good_muons_and_compatible_muon_vertex = true;
-            if (reco_jpsi_from_electrons.has_dimuon_vertex_compatible_with_primary_vertex.at(i)) {
-              found_good_dimuon_jpsi_from_electrons_compatible_with_primary_vertex = true;
-              if (reco_jpsi_from_electrons.is_within_jpsi_mass_window.at(i) ) {
-                found_jpsi_from_electrons = true;
-              }
-            }
-          }
-        }
     }
     //-------------------------------------------------------------------------------
   }
@@ -561,13 +687,13 @@ namespace zf {
       zf_electron->AddCutResult("eg_trigwp70", TRIGWP70, WEIGHT);
 
       // Check for trigger matching
-      const bool EE_TIGHT = TriggerMatch(iEvent, ET_ET_TIGHT, zf_electron->eta, zf_electron->phi, TRIG_DR_);
-      const bool EE_LOOSE = TriggerMatch(iEvent, ET_ET_LOOSE, zf_electron->eta, zf_electron->phi, TRIG_DR_);
-      const bool EE_DZ = TriggerMatch(iEvent, ET_ET_DZ, zf_electron->eta, zf_electron->phi, TRIG_DR_);
-      const bool EENT_TIGHT = TriggerMatch(iEvent, ET_NT_ET_TIGHT, zf_electron->eta, zf_electron->phi, TRIG_DR_);
-      const bool EEHF_TIGHT = EENT_TIGHT;
-      const bool EEHF_LOOSE = TriggerMatch(iEvent, ET_HF_ET_LOOSE, zf_electron->eta, zf_electron->phi, TRIG_DR_);
-      const bool SINGLE_E = TriggerMatch(iEvent, SINGLE_ELECTRON_TRIGGER, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool EE_TIGHT   = 1.; //TriggerMatch(iEvent, ET_ET_TIGHT, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool EE_LOOSE   = 1.; //TriggerMatch(iEvent, ET_ET_LOOSE, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool EE_DZ      = 1.; //TriggerMatch(iEvent, ET_ET_DZ, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool EENT_TIGHT = 1.; //TriggerMatch(iEvent, ET_NT_ET_TIGHT, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool EEHF_TIGHT = 1.; //EENT_TIGHT;
+      const bool EEHF_LOOSE = 1.; //TriggerMatch(iEvent, ET_HF_ET_LOOSE, zf_electron->eta, zf_electron->phi, TRIG_DR_);
+      const bool SINGLE_E   = 1.; //TriggerMatch(iEvent, SINGLE_ELECTRON_TRIGGER, zf_electron->eta, zf_electron->phi, TRIG_DR_);
 
       //et defined to mean total ecal here
       zf_electron->AddCutResult("trig(et_et_tight)", EE_TIGHT, WEIGHT);
@@ -615,15 +741,30 @@ namespace zf {
       reco_z.muon0_pT.push_back(e0->pt);
       reco_z.muon0_eta.push_back(e0->eta);
       reco_z.muon0_phi.push_back(e0->phi);
+      reco_z.muon0_d0.push_back(e0->gsf_elec_.gsfTrack()->d0());
+      reco_z.muon0_dxy.push_back(e0->gsf_elec_.gsfTrack()->dxy());
+      reco_z.muon0_dz.push_back(e0->gsf_elec_.gsfTrack()->dz());
+      reco_z.muon0_d0err.push_back(e0->gsf_elec_.gsfTrack()->d0Error());
+      reco_z.muon0_dxyerr.push_back(e0->gsf_elec_.gsfTrack()->dxyError());
+      reco_z.muon0_dzerr.push_back(e0->gsf_elec_.gsfTrack()->dzError());
+      std::printf("%f\n", e0->tkSumPt());
+
       reco_z.muon1_pT.push_back(e1->pt);
       reco_z.muon1_eta.push_back(e1->eta);
       reco_z.muon1_phi.push_back(e1->phi);
+      reco_z.muon1_d0.push_back (e1->gsf_elec_.gsfTrack()->d0());
+      reco_z.muon1_dxy.push_back(e1->gsf_elec_.gsfTrack()->dxy());
+      reco_z.muon1_dz.push_back (e1->gsf_elec_.gsfTrack()->dz());
+      reco_z.muon1_d0err.push_back (e1->gsf_elec_.gsfTrack()->d0Error());
+      reco_z.muon1_dxyerr.push_back(e1->gsf_elec_.gsfTrack()->dxyError());
+      reco_z.muon1_dzerr.push_back (e1->gsf_elec_.gsfTrack()->dzError());
+
       zlv = e0lv + e1lv;
       reco_z.zlv = zlv;
       if ( dielectron_vertex.isValid()) {
-        reco_z.vtx_x = dielectron_vertex.position().x();
-        reco_z.vtx_y = dielectron_vertex.position().y();
-        reco_z.vtx_z = dielectron_vertex.position().z();
+        reco_z.vtx_x.push_back(dielectron_vertex.position().x());
+        reco_z.vtx_y.push_back(dielectron_vertex.position().y());
+        reco_z.vtx_z.push_back(dielectron_vertex.position().z());
 
         reco_z.m = zlv.mass();
         reco_z.y = zlv.Rapidity();
@@ -632,6 +773,18 @@ namespace zf {
         reco_z.phistar = ReturnPhistar(e0->eta, e0->phi, e1->eta, e1->phi);
         reco_z.eta = zlv.eta();
         reco_z.vtx = dielectron_vertex;
+      } else {
+        reco_z.vtx_x.push_back(-1000);
+        reco_z.vtx_y.push_back(-1000);
+        reco_z.vtx_z.push_back(-1000);
+
+        reco_z.m       = -1000.; 
+        reco_z.y       = -1000.; 
+        reco_z.phi     = -1000.; 
+        reco_z.pt      = -1000.; 
+        reco_z.phistar = -1000.; 
+        reco_z.eta     = -1000.; 
+        reco_z.vtx     = dielectron_vertex;
       }
     }
   }
@@ -661,24 +814,54 @@ namespace zf {
     reco_z_from_muons.muon0_pT.push_back(z_muon0.pt());
     reco_z_from_muons.muon0_eta.push_back(z_muon0.eta());
     reco_z_from_muons.muon0_phi.push_back(z_muon0.phi());
+    reco_z_from_muons.muon0_trkKink.push_back(z_muon0.combinedQuality().trkKink); 
+    reco_z_from_muons.muon0_glbKink.push_back(z_muon0.combinedQuality().glbKink);
+    reco_z_from_muons.muon0_d0.push_back (z_muon0.muonBestTrack()->d0());
+    reco_z_from_muons.muon0_dxy.push_back(z_muon0.muonBestTrack()->dxy());
+    reco_z_from_muons.muon0_dz.push_back (z_muon0.muonBestTrack()->dz());
+    reco_z_from_muons.muon0_d0err.push_back (z_muon0.muonBestTrack()->d0Error());
+    reco_z_from_muons.muon0_dxyerr.push_back(z_muon0.muonBestTrack()->dxyError());
+    reco_z_from_muons.muon0_dzerr.push_back (z_muon0.muonBestTrack()->dzError());
+
     reco_z_from_muons.muon1_pT.push_back(z_muon1.pt());
     reco_z_from_muons.muon1_eta.push_back(z_muon1.eta());
     reco_z_from_muons.muon1_phi.push_back(z_muon1.phi());
+    reco_z_from_muons.muon1_trkKink.push_back(z_muon1.combinedQuality().trkKink);
+    reco_z_from_muons.muon1_glbKink.push_back(z_muon1.combinedQuality().glbKink);
+    reco_z_from_muons.muon1_d0.push_back (z_muon1.muonBestTrack()->d0());
+    reco_z_from_muons.muon1_dxy.push_back(z_muon1.muonBestTrack()->dxy());
+    reco_z_from_muons.muon1_dz.push_back (z_muon1.muonBestTrack()->dz());
+    reco_z_from_muons.muon1_d0err.push_back (z_muon1.muonBestTrack()->d0Error());
+    reco_z_from_muons.muon1_dxyerr.push_back(z_muon1.muonBestTrack()->dxyError());
+    reco_z_from_muons.muon1_dzerr.push_back (z_muon1.muonBestTrack()->dzError());
+
     zlv = muon0lv + muon1lv;
     reco_z_from_muons.zlv = zlv;
 
     if ( dimuon_vertex.isValid()) {
-      reco_z_from_muons.vtx_x = dimuon_vertex.position().x();
-      reco_z_from_muons.vtx_y = dimuon_vertex.position().y();
-      reco_z_from_muons.vtx_z = dimuon_vertex.position().z();
+      reco_z_from_muons.vtx_x.push_back(dimuon_vertex.position().x());
+      reco_z_from_muons.vtx_y.push_back(dimuon_vertex.position().y());
+      reco_z_from_muons.vtx_z.push_back(dimuon_vertex.position().z());
 
-      reco_z_from_muons.m = zlv.mass();
-      reco_z_from_muons.y = zlv.Rapidity();
+      reco_z_from_muons.m   = zlv.mass();
+      reco_z_from_muons.y   = zlv.Rapidity();
       reco_z_from_muons.phi = zlv.phi();
-      reco_z_from_muons.pt = zlv.pt();
+      reco_z_from_muons.pt  = zlv.pt();
       reco_z_from_muons.phistar = ReturnPhistar(z_muon0.eta(), z_muon0.phi(), z_muon1.eta(), z_muon1.phi());
       reco_z_from_muons.eta = zlv.eta();
       reco_z_from_muons.vtx = dimuon_vertex;
+    } else {
+      reco_z_from_muons.vtx_x.push_back(-1000.);
+      reco_z_from_muons.vtx_y.push_back(-1000.);
+      reco_z_from_muons.vtx_z.push_back(-1000.);
+
+      reco_z_from_muons.m       = -1000.; 
+      reco_z_from_muons.y       = -1000.; 
+      reco_z_from_muons.phi     = -1000.; 
+      reco_z_from_muons.pt      = -1000.; 
+      reco_z_from_muons.phistar = -1000.; 
+      reco_z_from_muons.eta     = -1000.; 
+      reco_z_from_muons.vtx     = dimuon_vertex;
     }
   }
 
@@ -888,6 +1071,22 @@ namespace zf {
       reco_jpsi.muon1_efficiency.push_back ( mu1_eff ); 
       reco_jpsi.muon0_scale_factor.push_back ( mu0_scale_factor ); 
       reco_jpsi.muon1_scale_factor.push_back ( mu1_scale_factor ); 
+      reco_jpsi.muon0_trkKink.push_back(mu0.combinedQuality().trkKink); 
+      reco_jpsi.muon0_glbKink.push_back(mu0.combinedQuality().glbKink);
+      reco_jpsi.muon1_trkKink.push_back(mu1.combinedQuality().trkKink); 
+      reco_jpsi.muon1_glbKink.push_back(mu1.combinedQuality().glbKink);
+      reco_jpsi.muon0_d0.push_back (mu0.muonBestTrack()->d0());
+      reco_jpsi.muon0_dxy.push_back(mu0.muonBestTrack()->dxy());
+      reco_jpsi.muon0_dz.push_back (mu0.muonBestTrack()->dz());
+      reco_jpsi.muon1_d0.push_back (mu1.muonBestTrack()->d0());
+      reco_jpsi.muon1_dxy.push_back(mu1.muonBestTrack()->dxy());
+      reco_jpsi.muon1_dz.push_back (mu1.muonBestTrack()->dz());
+      reco_jpsi.muon0_d0err.push_back (mu0.muonBestTrack()->d0Error());
+      reco_jpsi.muon0_dxyerr.push_back(mu0.muonBestTrack()->dxyError());
+      reco_jpsi.muon0_dzerr.push_back (mu0.muonBestTrack()->dzError());
+      reco_jpsi.muon1_d0err.push_back (mu1.muonBestTrack()->d0Error());
+      reco_jpsi.muon1_dxyerr.push_back(mu1.muonBestTrack()->dxyError());
+      reco_jpsi.muon1_dzerr.push_back (mu1.muonBestTrack()->dzError());
     }
     else {
       reco_jpsi.muon0.push_back (mu1);
@@ -902,6 +1101,23 @@ namespace zf {
       reco_jpsi.muon1_efficiency.push_back ( mu0_eff ); 
       reco_jpsi.muon0_scale_factor.push_back ( mu1_scale_factor ); 
       reco_jpsi.muon1_scale_factor.push_back ( mu0_scale_factor ); 
+      reco_jpsi.muon0_trkKink.push_back(mu1.combinedQuality().trkKink); 
+      reco_jpsi.muon0_glbKink.push_back(mu1.combinedQuality().glbKink);
+      reco_jpsi.muon1_trkKink.push_back(mu0.combinedQuality().trkKink); 
+      reco_jpsi.muon1_glbKink.push_back(mu0.combinedQuality().glbKink);
+      reco_jpsi.muon0_d0.push_back (mu1.muonBestTrack()->d0());
+      reco_jpsi.muon0_dxy.push_back(mu1.muonBestTrack()->dxy());
+      reco_jpsi.muon0_dz.push_back (mu1.muonBestTrack()->dz());
+      reco_jpsi.muon1_d0.push_back (mu0.muonBestTrack()->d0());
+      reco_jpsi.muon1_dxy.push_back(mu0.muonBestTrack()->dxy());
+      reco_jpsi.muon1_dz.push_back (mu0.muonBestTrack()->dz());
+      reco_jpsi.muon0_d0err.push_back (mu1.muonBestTrack()->d0Error());
+      reco_jpsi.muon0_dxyerr.push_back(mu1.muonBestTrack()->dxyError());
+      reco_jpsi.muon0_dzerr.push_back (mu1.muonBestTrack()->dzError());
+      reco_jpsi.muon1_d0err.push_back (mu0.muonBestTrack()->d0Error());
+      reco_jpsi.muon1_dxyerr.push_back(mu0.muonBestTrack()->dxyError());
+      reco_jpsi.muon1_dzerr.push_back (mu0.muonBestTrack()->dzError());
+
     }
 
     reco_jpsi.four_lepton_mass.push_back(four_lepton_lv.mass());
@@ -953,7 +1169,7 @@ namespace zf {
       reco_jpsi.iso_sum_photon_et_mu0.push_back ( mu0.pfIsolationR04().sumPhotonEtHighThreshold);
       reco_jpsi.iso_sum_pileup_pt_mu0.push_back ( mu0.pfIsolationR04().sumPUPt);
       reco_jpsi.iso_mu0.push_back ( (mu0.pfIsolationR04().sumChargedHadronPt + mu0.pfIsolationR04().sumNeutralHadronEt +
-            mu0.pfIsolationR04().sumPhotonEtHighThreshold ) / mu0.pt());
+                                    mu0.pfIsolationR04().sumPhotonEtHighThreshold ) / mu0.pt());
     }
     if(mu1.isPFIsolationValid()){
       reco_jpsi.iso_sum_charged_hadron_pt_mu1.push_back ( mu1.pfIsolationR04().sumChargedHadronPt);
@@ -962,10 +1178,8 @@ namespace zf {
       reco_jpsi.iso_sum_photon_et_mu1.push_back ( mu1.pfIsolationR04().sumPhotonEtHighThreshold);
       reco_jpsi.iso_sum_pileup_pt_mu1.push_back ( mu1.pfIsolationR04().sumPUPt);
       reco_jpsi.iso_mu1.push_back ( (mu1.pfIsolationR04().sumChargedHadronPt + mu1.pfIsolationR04().sumNeutralHadronEt +
-            mu1.pfIsolationR04().sumPhotonEtHighThreshold ) / mu1.pt());
+                                    mu1.pfIsolationR04().sumPhotonEtHighThreshold ) / mu1.pt());
     }
-
-
 
     //Cut results
     
@@ -1208,21 +1422,11 @@ namespace zf {
       vertex_probability = TMath::Prob(dielectron_vertex.totalChiSquared(), int(dielectron_vertex.degreesOfFreedom()));
     }
 
-    //TODO testing
-    //double e0_eff = GetEfficiency (SOFT_MUON_DATA_EFF_TABLE, e0.eta(), e0.pt() ) ;
-    //double e1_eff = GetEfficiency (SOFT_MUON_DATA_EFF_TABLE, e1.eta(), e1.pt() ) ;
-    //double e0_scale_factor = GetEfficiency (SOFT_MUON_SCALE_FACTOR_TABLE, e0.eta(), e0.pt());
-    //double e1_scale_factor = GetEfficiency (SOFT_MUON_SCALE_FACTOR_TABLE, e1.eta(), e1.pt());
-    //double jpsi_acc_eff = GetAccEff (SOFT_MUON_DATA_ACC_EFF_TABLE, jpsi_lv.Rapidity(), jpsi_lv.pt() );
-
     double e0_eff = GetEfficiency (SOFT_MUON_DATA_EFF_TABLE_MODIFIED, e0.eta(), e0.pt() ) ;
     double e1_eff = GetEfficiency (SOFT_MUON_DATA_EFF_TABLE_MODIFIED, e1.eta(), e1.pt() ) ;
     double e0_scale_factor = GetEfficiency (SOFT_MUON_SCALE_FACTOR_TABLE_MODIFIED, e0.eta(), e0.pt());
     double e1_scale_factor = GetEfficiency (SOFT_MUON_SCALE_FACTOR_TABLE_MODIFIED, e1.eta(), e1.pt());
     double jpsi_acc_eff = GetAccEff (SOFT_MUON_DATA_ACC_EFF_TABLE_MODIFIED, jpsi_lv.Rapidity(), jpsi_lv.pt() );
-
-
-    //TODO do this with a function, instead of by hand, cos(theta) = dot_product / (a.len() * b.len() )
 
     double dot_product_e0 = px * e0_px_boosted + py * e0_py_boosted + pz * e0_pz_boosted;
     double dot_product_e1 = px * e1_px_boosted + py * e1_py_boosted + pz * e1_pz_boosted;
@@ -1247,8 +1451,8 @@ namespace zf {
 
 // sleontsi from here was commented    
     if (e0.pt() >= e1.pt() ) {
-//      reco_jpsi_from_electrons.muon0.push_back (e0);
-//      reco_jpsi_from_electrons.muon1.push_back (e1);
+      reco_jpsi_from_electrons.muon0_charge.push_back ( e0.charge() ); 
+      reco_jpsi_from_electrons.muon1_charge.push_back ( e1.charge() ); 
       reco_jpsi_from_electrons.muon0_pT.push_back ( e0.pt() ); 
       reco_jpsi_from_electrons.muon1_pT.push_back ( e1.pt() ); 
       reco_jpsi_from_electrons.muon0_eta.push_back ( e0.eta() ); 
@@ -1259,8 +1463,21 @@ namespace zf {
       reco_jpsi_from_electrons.muon1_efficiency.push_back ( e1_eff ); 
       reco_jpsi_from_electrons.muon0_scale_factor.push_back ( e0_scale_factor ); 
       reco_jpsi_from_electrons.muon1_scale_factor.push_back ( e1_scale_factor ); 
-    }
-    else {
+      reco_jpsi_from_electrons.muon0_d0.push_back (e0.gsfTrack()->d0());
+      reco_jpsi_from_electrons.muon0_dxy.push_back(e0.gsfTrack()->dxy());
+      reco_jpsi_from_electrons.muon0_dz.push_back (e0.gsfTrack()->dz());
+      reco_jpsi_from_electrons.muon1_d0.push_back (e1.gsfTrack()->d0());
+      reco_jpsi_from_electrons.muon1_dxy.push_back(e1.gsfTrack()->dxy());
+      reco_jpsi_from_electrons.muon1_dz.push_back (e1.gsfTrack()->dz());
+      reco_jpsi_from_electrons.muon0_d0err.push_back (e0.gsfTrack()->d0Error());
+      reco_jpsi_from_electrons.muon0_dxyerr.push_back(e0.gsfTrack()->dxyError());
+      reco_jpsi_from_electrons.muon0_dzerr.push_back (e0.gsfTrack()->dzError());
+      reco_jpsi_from_electrons.muon1_d0err.push_back (e1.gsfTrack()->d0Error());
+      reco_jpsi_from_electrons.muon1_dxyerr.push_back(e1.gsfTrack()->dxyError());
+      reco_jpsi_from_electrons.muon1_dzerr.push_back (e1.gsfTrack()->dzError());
+    } else {
+      reco_jpsi_from_electrons.muon0_charge.push_back ( e1.charge() ); 
+      reco_jpsi_from_electrons.muon1_charge.push_back ( e0.charge() ); 
       reco_jpsi_from_electrons.muon0_pT.push_back ( e1.pt() ); 
       reco_jpsi_from_electrons.muon1_pT.push_back ( e0.pt() ); 
       reco_jpsi_from_electrons.muon0_eta.push_back ( e1.eta() ); 
@@ -1271,6 +1488,18 @@ namespace zf {
       reco_jpsi_from_electrons.muon1_efficiency.push_back ( e0_eff ); 
       reco_jpsi_from_electrons.muon0_scale_factor.push_back ( e1_scale_factor ); 
       reco_jpsi_from_electrons.muon1_scale_factor.push_back ( e0_scale_factor ); 
+      reco_jpsi_from_electrons.muon0_d0.push_back (e1.gsfTrack()->d0());
+      reco_jpsi_from_electrons.muon0_dxy.push_back(e1.gsfTrack()->dxy());
+      reco_jpsi_from_electrons.muon0_dz.push_back (e1.gsfTrack()->dz());
+      reco_jpsi_from_electrons.muon1_d0.push_back (e0.gsfTrack()->d0());
+      reco_jpsi_from_electrons.muon1_dxy.push_back(e0.gsfTrack()->dxy());
+      reco_jpsi_from_electrons.muon1_dz.push_back (e0.gsfTrack()->dz());
+      reco_jpsi_from_electrons.muon0_d0err.push_back (e1.gsfTrack()->d0Error());
+      reco_jpsi_from_electrons.muon0_dxyerr.push_back(e1.gsfTrack()->dxyError());
+      reco_jpsi_from_electrons.muon0_dzerr.push_back (e1.gsfTrack()->dzError());
+      reco_jpsi_from_electrons.muon1_d0err.push_back (e0.gsfTrack()->d0Error());
+      reco_jpsi_from_electrons.muon1_dxyerr.push_back(e0.gsfTrack()->dxyError());
+      reco_jpsi_from_electrons.muon1_dzerr.push_back (e0.gsfTrack()->dzError());
     }
 // sleontsi up to here
 
@@ -1325,7 +1554,6 @@ namespace zf {
       reco_jpsi_from_electrons.is_high_pt.push_back(false);
     }
 
-    //TODO testing
     if (e0.pt() > e1.pt() ) {
       if ( e0.pt() >= MIN_JPSI_LEADING_MUON_PT && e1.pt() >= MIN_JPSI_SUBLEADING_MUON_PT ) {
         reco_jpsi_from_electrons.has_high_pt_muons.push_back(true);
@@ -1366,7 +1594,6 @@ namespace zf {
     //if ( muon::isSoftMuon(e0, reco_vert.primary_vert )
     //    && muon::isSoftMuon(e1, reco_vert.primary_vert) ) {
 
-    //TODO fix this with appropriate cut for the jpsi
     if ( true ) {
       reco_jpsi_from_electrons.has_soft_id_muons.push_back(true);
     }
@@ -1499,7 +1726,6 @@ namespace zf {
     reco_bs.z = -1000;
 
     // Vertexes
-    // TODO use truth vert?
     reco_vert.num = -1;
     reco_vert.primary_x = -100;
     reco_vert.primary_y = -100;
@@ -1514,6 +1740,8 @@ namespace zf {
     id.lumi_num = 0;
     id.event_num = 0;
 
+    PDG_id.clear();
+
     // Z Data
     reco_z.m = -1;
     reco_z.y = -1000;
@@ -1522,9 +1750,31 @@ namespace zf {
     reco_z.phistar = -1;
     reco_z.eta = -1000;
     reco_z.vtx_prob.clear();
-    reco_z.vtx_x = -100;
-    reco_z.vtx_y = -100;
-    reco_z.vtx_z = -100;
+    reco_z.muon0_pT.clear();
+    reco_z.muon1_pT.clear();
+    reco_z.muon0_eta.clear();
+    reco_z.muon1_eta.clear();
+    reco_z.muon0_phi.clear();
+    reco_z.muon1_phi.clear();
+    reco_z.muon0_d0.clear();
+    reco_z.muon1_d0.clear();
+    reco_z.muon0_dxy.clear();
+    reco_z.muon1_dxy.clear();
+    reco_z.muon0_dz.clear();
+    reco_z.muon1_dz.clear();
+    reco_z.muon0_d0err.clear();
+    reco_z.muon1_d0err.clear();
+    reco_z.muon0_dxyerr.clear();
+    reco_z.muon1_dxyerr.clear();
+    reco_z.muon0_dzerr.clear();
+    reco_z.muon1_dzerr.clear();
+    reco_z.muon0_trkKink.clear();
+    reco_z.muon1_trkKink.clear();
+    reco_z.muon0_glbKink.clear();
+    reco_z.muon1_glbKink.clear();
+    reco_z.vtx_x.clear();
+    reco_z.vtx_y.clear();
+    reco_z.vtx_z.clear();
     math::PtEtaPhiMLorentzVector lv(0,0,0,0);
     reco_z.zlv = lv;
 
@@ -1535,22 +1785,269 @@ namespace zf {
     reco_z_from_muons.phistar = -1;
     reco_z_from_muons.eta = -1000;
     reco_z_from_muons.vtx_prob.clear();
-    reco_z_from_muons.vtx_x = -100;
-    reco_z_from_muons.vtx_y = -100;
-    reco_z_from_muons.vtx_z = -100;
+    reco_z_from_muons.muon0_pT.clear();
+    reco_z_from_muons.muon1_pT.clear();
+    reco_z_from_muons.muon0_eta.clear();
+    reco_z_from_muons.muon1_eta.clear();
+    reco_z_from_muons.muon0_phi.clear();
+    reco_z_from_muons.muon1_phi.clear();
+    reco_z_from_muons.muon0_d0.clear();
+    reco_z_from_muons.muon1_d0.clear();
+    reco_z_from_muons.muon0_dxy.clear();
+    reco_z_from_muons.muon1_dxy.clear();
+    reco_z_from_muons.muon0_dz.clear();
+    reco_z_from_muons.muon1_dz.clear();
+    reco_z_from_muons.muon0_d0err.clear();
+    reco_z_from_muons.muon1_d0err.clear();
+    reco_z_from_muons.muon0_dxyerr.clear();
+    reco_z_from_muons.muon1_dxyerr.clear();
+    reco_z_from_muons.muon0_dzerr.clear();
+    reco_z_from_muons.muon1_dzerr.clear();
+
+    reco_z_from_muons.muon0_trkKink.clear();
+    reco_z_from_muons.muon1_trkKink.clear();
+    reco_z_from_muons.muon0_glbKink.clear();
+    reco_z_from_muons.muon1_glbKink.clear();
+    reco_z_from_muons.vtx_x.clear();
+    reco_z_from_muons.vtx_y.clear();
+    reco_z_from_muons.vtx_z.clear();
     reco_z_from_muons.zlv = lv;
+
+    four_lepton_vertex.muon0_pt .clear();
+    four_lepton_vertex.muon1_pt .clear();
+    four_lepton_vertex.muon2_pt .clear();
+    four_lepton_vertex.muon3_pt .clear();
+    four_lepton_vertex.muon0_eta.clear();
+    four_lepton_vertex.muon1_eta.clear();
+    four_lepton_vertex.muon2_eta.clear();
+    four_lepton_vertex.muon3_eta.clear();
+    four_lepton_vertex.muon0_phi.clear();
+    four_lepton_vertex.muon1_phi.clear();
+    four_lepton_vertex.muon2_phi.clear();
+    four_lepton_vertex.muon3_phi.clear();
+    four_lepton_vertex.vtx_chi2 .clear();
+    four_lepton_vertex.vtx_ndf  .clear(); 
+    four_lepton_vertex.vtx_prob .clear(); 
 
     truth_z_electrons.m = -1;
     truth_z_electrons.y = -1000;
     truth_z_electrons.pt = -1;
     truth_z_electrons.phistar = -1;
     truth_z_electrons.eta = -1000;
+    truth_z_electrons.muon0_pT.clear();
+    truth_z_electrons.muon1_pT.clear();
+    truth_z_electrons.muon0_eta.clear();
+    truth_z_electrons.muon1_eta.clear();
+    truth_z_electrons.muon0_phi.clear();
+    truth_z_electrons.muon1_phi.clear();
+    truth_z_electrons.muon0_d0.clear();
+    truth_z_electrons.muon1_d0.clear();
+    truth_z_electrons.muon0_dxy.clear();
+    truth_z_electrons.muon1_dxy.clear();
+    truth_z_electrons.muon0_dz.clear();
+    truth_z_electrons.muon1_dz.clear();
+    truth_z_electrons.muon0_d0err.clear();
+    truth_z_electrons.muon1_d0err.clear();
+    truth_z_electrons.muon0_dxyerr.clear();
+    truth_z_electrons.muon1_dxyerr.clear();
+    truth_z_electrons.muon0_dzerr.clear();
+    truth_z_electrons.muon1_dzerr.clear();
 
     truth_z_muons.m = -1;
     truth_z_muons.y = -1000;
     truth_z_muons.pt = -1;
     truth_z_muons.phistar = -1;
     truth_z_muons.eta = -1000;
+    truth_z_muons.muon0_pT.clear();
+    truth_z_muons.muon1_pT.clear();
+    truth_z_muons.muon0_eta.clear();
+    truth_z_muons.muon1_eta.clear();
+    truth_z_muons.muon0_phi.clear();
+    truth_z_muons.muon1_phi.clear();
+    truth_z_muons.muon0_d0.clear();
+    truth_z_muons.muon1_d0.clear();
+    truth_z_muons.muon0_dxy.clear();
+    truth_z_muons.muon1_dxy.clear();
+    truth_z_muons.muon0_dz.clear();
+    truth_z_muons.muon1_dz.clear();
+    truth_z_muons.muon0_d0err.clear();
+    truth_z_muons.muon1_d0err.clear();
+    truth_z_muons.muon0_dxyerr.clear();
+    truth_z_muons.muon1_dxyerr.clear();
+    truth_z_muons.muon0_dzerr.clear();
+    truth_z_muons.muon1_dzerr.clear();
+
+    // Jpsi vectors
+    reco_jpsi.m                 .clear();
+    reco_jpsi.pt                .clear();
+    reco_jpsi.y                 .clear();
+    reco_jpsi.phistar           .clear();
+    reco_jpsi.eta               .clear();
+    reco_jpsi.phi               .clear();
+    reco_jpsi.tau_xy            .clear();
+    reco_jpsi.tau_z             .clear();
+    reco_jpsi.distance_x        .clear();
+    reco_jpsi.distance_y        .clear();
+    reco_jpsi.distance_z        .clear();
+    reco_jpsi.distance          .clear();
+    reco_jpsi.dist_err          .clear();
+    reco_jpsi.chi2              .clear();
+    reco_jpsi.distance_xy       .clear();
+    reco_jpsi.dist_err_xy       .clear();
+    reco_jpsi.chi2_xy           .clear();
+    reco_jpsi.vtx_x             .clear();
+    reco_jpsi.vtx_y             .clear();
+    reco_jpsi.vtx_z             .clear();
+    reco_jpsi.vtx_prob          .clear();
+    reco_jpsi.jpsi_efficiency   .clear();
+    reco_jpsi.jpsi_scale_factor .clear();
+    reco_jpsi.cos_jpsi_mu_plus  .clear();
+    reco_jpsi.cos_jpsi_mu_minus .clear();
+    reco_jpsi.muons_delta_phi   .clear();
+    reco_jpsi.muons_delta_eta   .clear();
+    reco_jpsi.muons_deltaR      .clear();
+    reco_jpsi.z_delta_phi       .clear();
+    reco_jpsi.four_lepton_mass  .clear();
+    reco_jpsi.muon0_pT          .clear();
+    reco_jpsi.muon1_pT          .clear();
+    reco_jpsi.muon0_eta         .clear();
+    reco_jpsi.muon1_eta         .clear();
+    reco_jpsi.muon0_phi         .clear();
+    reco_jpsi.muon1_phi         .clear();
+    reco_jpsi.muon0_d0          .clear();
+    reco_jpsi.muon0_d0          .clear();
+    reco_jpsi.muon0_dxy         .clear();
+    reco_jpsi.muon1_dxy         .clear();
+    reco_jpsi.muon1_dz          .clear();
+    reco_jpsi.muon1_dz          .clear();
+    reco_jpsi.muon0_d0err       .clear();
+    reco_jpsi.muon0_d0err       .clear();
+    reco_jpsi.muon0_dxyerr      .clear();
+    reco_jpsi.muon1_dxyerr      .clear();
+    reco_jpsi.muon1_dzerr       .clear();
+    reco_jpsi.muon1_dzerr       .clear();
+
+    reco_jpsi.muon0_trkKink     .clear();
+    reco_jpsi.muon1_trkKink     .clear();
+    reco_jpsi.muon0_glbKink     .clear();
+    reco_jpsi.muon1_glbKink     .clear();
+    reco_jpsi.jpsi_acc_eff      .clear();
+    reco_jpsi.muon0_efficiency  .clear();
+    reco_jpsi.muon1_efficiency  .clear();
+    reco_jpsi.muon0_scale_factor.clear();
+    reco_jpsi.muon1_scale_factor.clear();
+    reco_jpsi.muon0_deltaR_to_z_muons         .clear();
+    reco_jpsi.muon1_deltaR_to_z_muons         .clear();
+    reco_jpsi.iso_mu0                         .clear();
+    reco_jpsi.iso_sum_charged_hadron_pt_mu0   .clear();
+    reco_jpsi.iso_sum_charged_particle_pt_mu0 .clear();
+    reco_jpsi.iso_sum_neutral_hadron_et_mu0   .clear();
+    reco_jpsi.iso_sum_photon_et_mu0           .clear();
+    reco_jpsi.iso_sum_pileup_pt_mu0           .clear();
+    reco_jpsi.iso_mu1                         .clear();
+    reco_jpsi.iso_sum_charged_hadron_pt_mu1   .clear();
+    reco_jpsi.iso_sum_charged_particle_pt_mu1 .clear();
+    reco_jpsi.iso_sum_neutral_hadron_et_mu1   .clear();
+    reco_jpsi.iso_sum_photon_et_mu1           .clear();
+    reco_jpsi.iso_sum_pileup_pt_mu1           .clear();
+    reco_jpsi.trigger_object_mu0_pt           .clear();
+    reco_jpsi.trigger_object_mu1_pt           .clear();
+    reco_jpsi.has_muons_in_eta_window         .clear();
+    reco_jpsi.has_high_pt_muons               .clear();
+    reco_jpsi.has_soft_id_muons               .clear();
+    reco_jpsi.has_muons_with_compatible_vertex.clear();
+    reco_jpsi.has_dimuon_vertex_compatible_with_primary_vertex.clear();
+    reco_jpsi.is_high_pt                .clear();
+    reco_jpsi.is_in_rap_window          .clear();
+    reco_jpsi.is_within_jpsi_mass_window.clear();
+    reco_jpsi.is_prompt                 .clear();
+
+    // recojpsi electrons
+    reco_jpsi_from_electrons.m                 .clear();
+    reco_jpsi_from_electrons.pt                .clear();
+    reco_jpsi_from_electrons.y                 .clear();
+    reco_jpsi_from_electrons.phistar           .clear();
+    reco_jpsi_from_electrons.eta               .clear();
+    reco_jpsi_from_electrons.phi               .clear();
+    reco_jpsi_from_electrons.tau_xy            .clear();
+    reco_jpsi_from_electrons.tau_z             .clear();
+    reco_jpsi_from_electrons.distance_x        .clear();
+    reco_jpsi_from_electrons.distance_y        .clear();
+    reco_jpsi_from_electrons.distance_z        .clear();
+    reco_jpsi_from_electrons.distance          .clear();
+    reco_jpsi_from_electrons.dist_err          .clear();
+    reco_jpsi_from_electrons.chi2              .clear();
+    reco_jpsi_from_electrons.distance_xy       .clear();
+    reco_jpsi_from_electrons.dist_err_xy       .clear();
+    reco_jpsi_from_electrons.chi2_xy           .clear();
+    reco_jpsi_from_electrons.vtx_x             .clear();
+    reco_jpsi_from_electrons.vtx_y             .clear();
+    reco_jpsi_from_electrons.vtx_z             .clear();
+    reco_jpsi_from_electrons.vtx_prob          .clear();
+    reco_jpsi_from_electrons.muon0_charge      .clear();
+    reco_jpsi_from_electrons.muon1_charge      .clear();
+    reco_jpsi_from_electrons.jpsi_efficiency   .clear();
+    reco_jpsi_from_electrons.jpsi_scale_factor .clear();
+    reco_jpsi_from_electrons.cos_jpsi_mu_plus  .clear();
+    reco_jpsi_from_electrons.cos_jpsi_mu_minus .clear();
+    reco_jpsi_from_electrons.muons_delta_phi   .clear();
+    reco_jpsi_from_electrons.muons_delta_eta   .clear();
+    reco_jpsi_from_electrons.muons_deltaR      .clear();
+    reco_jpsi_from_electrons.z_delta_phi       .clear();
+    reco_jpsi_from_electrons.four_lepton_mass  .clear();
+    reco_jpsi_from_electrons.muon0_pT          .clear();
+    reco_jpsi_from_electrons.muon1_pT          .clear();
+    reco_jpsi_from_electrons.muon0_eta         .clear();
+    reco_jpsi_from_electrons.muon1_eta         .clear();
+    reco_jpsi_from_electrons.muon0_phi         .clear();
+    reco_jpsi_from_electrons.muon1_phi         .clear();
+    reco_jpsi_from_electrons.muon0_d0          .clear();
+    reco_jpsi_from_electrons.muon0_dxy         .clear();
+    reco_jpsi_from_electrons.muon0_dz          .clear();
+    reco_jpsi_from_electrons.muon1_d0          .clear();
+    reco_jpsi_from_electrons.muon1_dxy         .clear();
+    reco_jpsi_from_electrons.muon1_dz          .clear();
+    reco_jpsi_from_electrons.muon0_d0err       .clear();
+    reco_jpsi_from_electrons.muon0_dxyerr      .clear();
+    reco_jpsi_from_electrons.muon0_dzerr       .clear();
+    reco_jpsi_from_electrons.muon1_d0err       .clear();
+    reco_jpsi_from_electrons.muon1_dxyerr      .clear();
+    reco_jpsi_from_electrons.muon1_dzerr       .clear();
+    reco_jpsi_from_electrons.muon0_trkKink     .clear();
+    reco_jpsi_from_electrons.muon1_trkKink     .clear();
+    reco_jpsi_from_electrons.muon0_glbKink     .clear();
+    reco_jpsi_from_electrons.muon1_glbKink     .clear();
+    reco_jpsi_from_electrons.jpsi_acc_eff      .clear();
+    reco_jpsi_from_electrons.muon0_efficiency  .clear();
+    reco_jpsi_from_electrons.muon1_efficiency  .clear();
+    reco_jpsi_from_electrons.muon0_scale_factor.clear();
+    reco_jpsi_from_electrons.muon1_scale_factor.clear();
+    reco_jpsi_from_electrons.muon0_deltaR_to_z_muons         .clear();
+    reco_jpsi_from_electrons.muon1_deltaR_to_z_muons         .clear();
+    reco_jpsi_from_electrons.iso_mu0                         .clear();
+    reco_jpsi_from_electrons.iso_sum_charged_hadron_pt_mu0   .clear();
+    reco_jpsi_from_electrons.iso_sum_charged_particle_pt_mu0 .clear();
+    reco_jpsi_from_electrons.iso_sum_neutral_hadron_et_mu0   .clear();
+    reco_jpsi_from_electrons.iso_sum_photon_et_mu0           .clear();
+    reco_jpsi_from_electrons.iso_sum_pileup_pt_mu0           .clear();
+    reco_jpsi_from_electrons.iso_mu1                         .clear();
+    reco_jpsi_from_electrons.iso_sum_charged_hadron_pt_mu1   .clear();
+    reco_jpsi_from_electrons.iso_sum_charged_particle_pt_mu1 .clear();
+    reco_jpsi_from_electrons.iso_sum_neutral_hadron_et_mu1   .clear();
+    reco_jpsi_from_electrons.iso_sum_photon_et_mu1           .clear();
+    reco_jpsi_from_electrons.iso_sum_pileup_pt_mu1           .clear();
+    reco_jpsi_from_electrons.trigger_object_mu0_pt           .clear();
+    reco_jpsi_from_electrons.trigger_object_mu1_pt           .clear();
+    reco_jpsi_from_electrons.has_muons_in_eta_window         .clear();
+    reco_jpsi_from_electrons.has_high_pt_muons               .clear();
+    reco_jpsi_from_electrons.has_soft_id_muons               .clear();
+    reco_jpsi_from_electrons.has_muons_with_compatible_vertex.clear();
+    reco_jpsi_from_electrons.has_dimuon_vertex_compatible_with_primary_vertex.clear();
+    reco_jpsi_from_electrons.is_high_pt                .clear();
+    reco_jpsi_from_electrons.is_in_rap_window          .clear();
+    reco_jpsi_from_electrons.is_within_jpsi_mass_window.clear();
+    reco_jpsi_from_electrons.is_prompt                 .clear();
+
 
     // Electrons
     e0 = NULL;
@@ -1574,22 +2071,9 @@ namespace zf {
   }
 
   void ZFinderEvent::InitTruth(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
-    /* Count Pile Up */
-    /*
-     * We don't need to select electrons with cuts, because in Monte Carlo we
-     * can just ask for the Z.
-     */
     edm::Handle<reco::GenParticleCollection> mc_particles;
     iEvent.getByLabel(inputtags_.generator, mc_particles);
 
-    /* Finding the Z and daughter electrons
-     *
-     * We loop over all gen particles. If it is a Z, we check its daughters
-     * until we find an electron, then we know that it is a Z->ee decay. If
-     * this is the first Z we save it. If the particle is an electron, we
-     * make sure it came from a Z. This might have problems in ZZ->eeee
-     * decays, but we expect those to be impossibly rare.
-     */
     const reco::GenParticle* electron_0 = NULL;
     const reco::GenParticle* electron_1 = NULL;
     const reco::GenParticle* muon_0 = NULL;
@@ -1598,12 +2082,14 @@ namespace zf {
     const reco::GenParticle* z_boson_muons = NULL;
 
     std::vector<const reco::GenParticle*> jpsi;
+    std::vector<const reco::GenParticle*> Zmumu;
+    std::vector<const reco::GenParticle*> Zee;
 
     //this code is inherited really convoluted, TODO fix it
     for(unsigned int i = 0; i < mc_particles->size(); ++i) {
       const reco::GenParticle* gen_particle = &mc_particles->at(i);
+      PDG_id.push_back(gen_particle->pdgId());
       // Is a Z
-      //if (gen_particle->pdgId() == ZBOSON && z_boson_electrons == NULL) {
       if (gen_particle->pdgId() == ZBOSON && z_boson_electrons == NULL) {
         for (size_t j = 0; j < gen_particle->numberOfDaughters(); ++j) {
           if (gen_particle->daughter(j)->pdgId() == ELECTRON) {
@@ -1660,17 +2146,27 @@ namespace zf {
           }
         }
       }
+      if ( gen_particle->pdgId() == ZBOSON ) {
+        for (size_t j = 0; j < gen_particle->numberOfDaughters(); ++j) {
+          if (gen_particle->daughter(j)->pdgId() == MUON) {
+            Zmumu.push_back(gen_particle);
+            break;
+          }
+        }
+      }
+      if ( gen_particle->pdgId() == ZBOSON ) {
+        for (size_t j = 0; j < gen_particle->numberOfDaughters(); ++j) {
+          if (gen_particle->daughter(j)->pdgId() == ELECTRON) {
+            Zee.push_back(gen_particle);
+            break;
+          }
+        }
+      }
+
     }
+
+    jpsi.clear(); // sleontsi -- this line deactivates the jpsi truth parsing
     for (unsigned int i = 0; i < jpsi.size() ; ++i ) {
-      //TODO it seems that jpsi.size should only be 1, do not use a list here?
-      //TODO: decide how to handle FSR!
-      //if ( jpsi.at(i)->numberOfDaughters() != 2 ) {
-      //  std::cout << "JPSI TO LESS THAN 2 DAUGHTERS: " << jpsi.at(i)->numberOfDaughters() << std::endl;
-      //  for (unsigned int j = 0 ; j < jpsi.at(i)->numberOfDaughters() ; ++j) {
-      //    std::cout << "daughter id: " << jpsi.at(i)->daughter( j )->pdgId() << std::endl;
-      //  }
-      //  continue;
-      //}
       const reco::Candidate * d_mu0 = jpsi.at(i)->daughter( 0 );
       const reco::Candidate * d_mu1 = jpsi.at(i)->daughter( 1 );
       //TODO decide if need muon/antimuon, or can just make this assumption
@@ -1696,11 +2192,6 @@ namespace zf {
       truth_jpsi.y.push_back( 0.5 * log(JPSIEPP / JPSIEMP));
       truth_jpsi.eta.push_back( jpsi.at(i)->eta());
       truth_jpsi.phi.push_back( jpsi.at(i)->phi());
-
-
-      ////////////////////////////////////////////////////////////////////////////////////
-      //TODO figure out if there is a better way to do this, maybe in a function as right now 
-      //I do same process for reco_jpsi and truth_jpsi
 
       const double MUON_MASS = 0.1056583715;
       math::PtEtaPhiMLorentzVector mu0lv(jpsi_muon0.at(i)->pt(), jpsi_muon0.at(i)->eta(), jpsi_muon0.at(i)->phi() , MUON_MASS);
@@ -1729,8 +2220,6 @@ namespace zf {
       double mu1_py_boosted =  mu1_lv2->Py();
       double mu1_pz_boosted =  mu1_lv2->Pz();
 
-      //TODO do this with a function, instead of by hand, cos(theta) = dot_product / (a.len() * b.len() )
-
       double dot_product_mu0 = px * mu0_px_boosted + py * mu0_py_boosted + pz * mu0_pz_boosted;
       double dot_product_mu1 = px * mu1_px_boosted + py * mu1_py_boosted + pz * mu1_pz_boosted;
 
@@ -1751,97 +2240,128 @@ namespace zf {
 
       truth_jpsi.cos_jpsi_mu_plus.push_back(cos_jpsi_mu_plus);
       truth_jpsi.cos_jpsi_mu_minus.push_back(cos_jpsi_mu_minus);
-
-      ////////////////////////////////////////////////////////////////////////////////////
-
-
-
-      //TODO 1.2 should not be hardcoded
-      if (jpsi_muon0.at(i)->pt() > jpsi_muon1.at(i)->pt() ) {
-        if (jpsi_muon0.at(i)->pt() >= MIN_JPSI_LEADING_MUON_PT && jpsi_muon1.at(i)->pt() >= MIN_JPSI_SUBLEADING_MUON_PT 
-            && jpsi.at(i)->pt() >= MIN_JPSI_PT) {
-          truth_jpsi.has_high_pt_muons.push_back( true );
-        }
-        else if (jpsi_muon0.at(i)->pt() >= MIN_JPSI_LEADING_MUON_PT && jpsi_muon1.at(i)->pt() >= MIN_JPSI_SUBLEADING_MUON_PT_HIGH_ETA
-            && jpsi.at(i)->pt() >= MIN_JPSI_PT && (fabs(jpsi_muon1.at(i)->eta()) >= 1.2)) {
-          truth_jpsi.has_high_pt_muons.push_back( true );
-        }
-        else {
-          truth_jpsi.has_high_pt_muons.push_back( false );
-        }
-      }
-      else {
-        if (jpsi_muon1.at(i)->pt() >= MIN_JPSI_LEADING_MUON_PT && jpsi_muon0.at(i)->pt() >= MIN_JPSI_SUBLEADING_MUON_PT 
-            && jpsi.at(i)->pt() >= MIN_JPSI_PT) {
-          truth_jpsi.has_high_pt_muons.push_back( true );
-        }
-        else if (jpsi_muon1.at(i)->pt() >= MIN_JPSI_LEADING_MUON_PT && jpsi_muon0.at(i)->pt() >= MIN_JPSI_SUBLEADING_MUON_PT_HIGH_ETA
-            && jpsi.at(i)->pt() >= MIN_JPSI_PT && (fabs(jpsi_muon0.at(i)->eta()) >= 1.2)) {
-          truth_jpsi.has_high_pt_muons.push_back( true );
-        }
-        else {
-          truth_jpsi.has_high_pt_muons.push_back( false );
-        }
-      }
-      if (fabs(jpsi_muon0.at(i)->eta()) <= MAX_JPSI_MUON_ETA && fabs(jpsi_muon1.at(i)->eta()) <= MAX_JPSI_MUON_ETA ) {
-        truth_jpsi.has_muons_in_eta_window.push_back( true );
-      }
-      else {
-        truth_jpsi.has_muons_in_eta_window.push_back( false );
-      }
-
-      if (jpsi.at(i)->mass() <= MAX_JPSI_MASS && jpsi.at(i)->mass() >= MIN_JPSI_MASS ) {
-        truth_jpsi.is_within_jpsi_mass_window.push_back( true );
-      }
-      else {
-        truth_jpsi.is_within_jpsi_mass_window.push_back( false );
-      }
     }
     
-    //Set truth jpsi cut flags
-    found_truth_jpsi_with_high_pt_muons = false;
-    for (unsigned int i = 0; i < truth_jpsi.m.size() ; ++i ) {
-      if (truth_jpsi.has_high_pt_muons.at(i) && truth_jpsi.is_within_jpsi_mass_window.at(i)) {
-        found_truth_jpsi_with_high_pt_muons = true;
-      }
-    }
-
     // Continue only if all particles have been found
-    if (z_boson_electrons != NULL && electron_0 != NULL && electron_1 != NULL) {
-      // We set electron_0 to the higher pt electron
-      if (electron_0->pt() < electron_1->pt()) {
-        std::swap(electron_0, electron_1);
-      }
+//    if (z_boson_electrons != NULL && electron_0 != NULL && electron_1 != NULL) {
+//      // We set electron_0 to the higher pt electron
+//      if (electron_0->pt() < electron_1->pt()) {
+//        std::swap(electron_0, electron_1);
+//      }
+//
+//      const reco::Candidate * d_e0 = z_boson_electrons->daughter( 0 );
+//      const reco::Candidate * d_e1 = z_boson_electrons->daughter( 1 );
+//      if (abs(d_e0->pdgId()) != ELECTRON && abs(d_e1->pdgId()) != ELECTRON) {
+//        std::cout << "Z TO NOT ELECTRONS" << std::endl;
+//      }
+//      if ( d_e0->pt() >= d_e1->pt() ) {
+//        z_truth_electron0 = d_e0;
+//        z_truth_electron1 = d_e1;
+//      }
+//      else {
+//        z_truth_electron0 = d_e1;
+//        z_truth_electron1 = d_e0;
+//      }
+//
+//      truth_z_electrons.vtx_x.push_back(z_boson_electrons->vx());
+//      truth_z_electrons.vtx_y.push_back(z_boson_electrons->vy());
+//      truth_z_electrons.vtx_z.push_back(z_boson_electrons->vz());
+//
+//      // Add electrons
+//      ZFinderElectron* zf_electron_0 = AddTruthElectron(*electron_0);
+//      set_e0_truth(zf_electron_0);
+//      ZFinderElectron* zf_electron_1 = AddTruthElectron(*electron_1);
+//      set_e1_truth(zf_electron_1);
+//
+//      // Z Properties
+//      truth_z_electrons.m = z_boson_electrons->mass();
+//      truth_z_electrons.pt = z_boson_electrons->pt();
+//      const double ZEPP = z_boson_electrons->energy() + z_boson_electrons->pz();
+//      const double ZEMP = z_boson_electrons->energy() - z_boson_electrons->pz();
+//      truth_z_electrons.y = 0.5 * log(ZEPP / ZEMP);
+//      truth_z_electrons.phistar = ReturnPhistar(electron_0->eta(), electron_0->phi(), electron_1->eta(), electron_1->phi());
+//      truth_z_electrons.eta = z_boson_electrons->eta();
+//    }
 
-      const reco::Candidate * d_e0 = z_boson_electrons->daughter( 0 );
-      const reco::Candidate * d_e1 = z_boson_electrons->daughter( 1 );
-      if (abs(d_e0->pdgId()) != ELECTRON && abs(d_e1->pdgId()) != ELECTRON) {
-        std::cout << "Z TO NOT ELECTRONS" << std::endl;
+    // Z->mumu new truth
+    for (unsigned int i = 0; i < Zmumu.size() ; ++i ) {
+      const reco::Candidate * Zmumu_mu0 = Zmumu.at(i)->daughter(0);
+      const reco::Candidate * Zmumu_mu1 = Zmumu.at(i)->daughter(1);
+      if (abs(Zmumu_mu0->pdgId()) != MUON && abs(Zmumu_mu1->pdgId()) != MUON) {
+        std::cout << "Z TO NOT MUONS" << std::endl;
+        continue;
       }
-      if ( d_e0->pt() >= d_e1->pt() ) {
-        z_truth_electron0 = d_e0;
-        z_truth_electron1 = d_e1;
+      if ( Zmumu_mu0->pt() >= Zmumu_mu1->pt() ) {
+        z_truth_muon0 = Zmumu_mu0;
+        z_truth_muon1 = Zmumu_mu1;
       }
       else {
-        z_truth_electron0 = d_e1;
-        z_truth_electron1 = d_e0;
+        z_truth_muon0 = Zmumu_mu1;
+        z_truth_muon1 = Zmumu_mu0;
       }
-
-      // Add electrons
-      ZFinderElectron* zf_electron_0 = AddTruthElectron(*electron_0);
-      set_e0_truth(zf_electron_0);
-      ZFinderElectron* zf_electron_1 = AddTruthElectron(*electron_1);
-      set_e1_truth(zf_electron_1);
+      truth_z_muons.vtx_x.push_back(Zmumu.at(i)->vx());
+      truth_z_muons.vtx_y.push_back(Zmumu.at(i)->vy());
+      truth_z_muons.vtx_z.push_back(Zmumu.at(i)->vz());
 
       // Z Properties
-      truth_z_electrons.m = z_boson_electrons->mass();
-      truth_z_electrons.pt = z_boson_electrons->pt();
-      const double ZEPP = z_boson_electrons->energy() + z_boson_electrons->pz();
-      const double ZEMP = z_boson_electrons->energy() - z_boson_electrons->pz();
-      truth_z_electrons.y = 0.5 * log(ZEPP / ZEMP);
-      truth_z_electrons.phistar = ReturnPhistar(electron_0->eta(), electron_0->phi(), electron_1->eta(), electron_1->phi());
-      truth_z_electrons.eta = z_boson_electrons->eta();
+      truth_z_muons.muon0_pT.push_back (z_truth_muon0->pt());
+      truth_z_muons.muon1_pT.push_back (z_truth_muon1->pt());
+      truth_z_muons.muon0_eta.push_back(z_truth_muon0->eta());
+      truth_z_muons.muon1_eta.push_back(z_truth_muon1->eta());
+      truth_z_muons.muon0_phi.push_back(z_truth_muon0->phi());
+      truth_z_muons.muon1_phi.push_back(z_truth_muon1->phi());
+
+      truth_z_muons.m   = Zmumu.at(i)->mass();
+      truth_z_muons.pt  = Zmumu.at(i)->pt();
+      truth_z_muons.phi = Zmumu.at(i)->phi();
+      truth_z_muons.eta = Zmumu.at(i)->eta();
+      const double ZEPP = Zmumu.at(i)->energy() + Zmumu.at(i)->pz();
+      const double ZEMP = Zmumu.at(i)->energy() - Zmumu.at(i)->pz();
+      truth_z_muons.y = 0.5 * log(ZEPP / ZEMP);
+      truth_z_muons.phistar = ReturnPhistar(muon_0->eta(), muon_0->phi(), muon_1->eta(), muon_1->phi());
+
     }
+
+    for (unsigned int i = 0; i < Zee.size() ; ++i ) {
+      const reco::Candidate * Zee_mu0 = Zee.at(i)->daughter(0);
+      const reco::Candidate * Zee_mu1 = Zee.at(i)->daughter(1);
+      if (abs(Zee_mu0->pdgId()) != ELECTRON && abs(Zee_mu1->pdgId()) != ELECTRON) {
+        std::cout << "Z TO NOT ELECTRONS" << std::endl;
+        continue;
+      }
+      if ( Zee_mu0->pt() >= Zee_mu1->pt() ) {
+        z_truth_electron0 = Zee_mu0;
+        z_truth_electron1 = Zee_mu1;
+      }
+      else {
+        z_truth_electron0 = Zee_mu1;
+        z_truth_electron1 = Zee_mu0;
+      }
+      truth_z_electrons.vtx_x.push_back(Zee.at(i)->vx());
+      truth_z_electrons.vtx_y.push_back(Zee.at(i)->vy());
+      truth_z_electrons.vtx_z.push_back(Zee.at(i)->vz());
+
+      // Z Properties
+      truth_z_electrons.muon0_pT.push_back (z_truth_electron0->pt());
+      truth_z_electrons.muon1_pT.push_back (z_truth_electron1->pt());
+      truth_z_electrons.muon0_eta.push_back(z_truth_electron0->eta());
+      truth_z_electrons.muon1_eta.push_back(z_truth_electron1->eta());
+      truth_z_electrons.muon0_phi.push_back(z_truth_electron0->phi());
+      truth_z_electrons.muon1_phi.push_back(z_truth_electron1->phi());
+
+      truth_z_electrons.m   = Zee.at(i)->mass();
+      truth_z_electrons.pt  = Zee.at(i)->pt();
+      truth_z_electrons.phi = Zee.at(i)->phi();
+      truth_z_electrons.eta = Zee.at(i)->eta();
+      const double ZEPP     = Zee.at(i)->energy() + Zee.at(i)->pz();
+      const double ZEMP     = Zee.at(i)->energy() - Zee.at(i)->pz();
+      truth_z_electrons.y = 0.5 * log(ZEPP / ZEMP);
+      truth_z_electrons.phistar = -1000.;
+
+    }
+
+    // this is the old way of Z boson truth Z->mumu
+/*
     if (z_boson_muons != NULL && muon_0 != NULL && muon_1 != NULL) {
       // We set muon_0 to the higher pt muon
       if (muon_0->pt() < muon_1->pt()) {
@@ -1862,7 +2382,18 @@ namespace zf {
         z_truth_muon1 = d_mu0;
       }
 
+      truth_z_muons.vtx_x.push_back(z_boson_muons->vx());
+      truth_z_muons.vtx_y.push_back(z_boson_muons->vy());
+      truth_z_muons.vtx_z.push_back(z_boson_muons->vz());
+
       // Z Properties
+      truth_z_muons.muon0_pT.push_back (z_truth_muon0->pt());
+      truth_z_muons.muon1_pT.push_back (z_truth_muon1->pt());
+      truth_z_muons.muon0_eta.push_back(z_truth_muon0->eta());
+      truth_z_muons.muon1_eta.push_back(z_truth_muon1->eta());
+      truth_z_muons.muon0_phi.push_back(z_truth_muon0->phi());
+      truth_z_muons.muon1_phi.push_back(z_truth_muon1->phi());
+
       truth_z_muons.m = z_boson_muons->mass();
       truth_z_muons.pt = z_boson_muons->pt();
       const double ZEPP = z_boson_muons->energy() + z_boson_muons->pz();
@@ -1870,57 +2401,46 @@ namespace zf {
       truth_z_muons.y = 0.5 * log(ZEPP / ZEMP);
       truth_z_muons.phistar = ReturnPhistar(muon_0->eta(), muon_0->phi(), muon_1->eta(), muon_1->phi());
       truth_z_muons.eta = z_boson_muons->eta();
+
     }
+*/
   }
 
-  void ZFinderEvent::InitTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
-    // Get the trigger objects that are closest in dR to our reco electrons
-    if (e0 != NULL && e1 != NULL) {
-      const trigger::TriggerObject* trig_obj_0 = GetBestMatchedTriggerObject(iEvent, ALL_TRIGGERS, e0->eta, e0->phi);
-      const trigger::TriggerObject* trig_obj_1 = GetBestMatchedTriggerObject(iEvent, ALL_TRIGGERS, e1->eta, e1->phi);
-
-      // If the electrons are good, set them as our trigger electrons
-      if (trig_obj_0 != NULL) {
-        ZFinderElectron* tmp_e0 = AddHLTElectron(*trig_obj_0);
-        set_e0_trig(tmp_e0);
-      }
-      if (trig_obj_1 != NULL) {
-        ZFinderElectron* tmp_e1 = AddHLTElectron(*trig_obj_1);
-        set_e1_trig(tmp_e1);
-      }
-    }
-    //TESTING JPSI trigger
-    //for (unsigned int i = 0; i < reco_jpsi.m.size() ; ++i ) {
-    //  //const trigger::TriggerObject* trig_obj_jpsimuon0 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon0.at(i).eta(), reco_jpsi.muon0.at(i).phi());
-    //  //const trigger::TriggerObject* trig_obj_jpsimuon1 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon1.at(i).eta(), reco_jpsi.muon1.at(i).phi());
-    //  const trigger::TriggerObject* trig_obj_jpsimuon0 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon0.at(i).eta(), reco_jpsi.muon0.at(i).phi());
-    //  const trigger::TriggerObject* trig_obj_jpsimuon1 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon1.at(i).eta(), reco_jpsi.muon1.at(i).phi());
-    //  if (trig_obj_jpsimuon0 != NULL) {
-    //    std::cout << "jpsimuon0 trig_obj pt: " << trig_obj_jpsimuon0->pt() << std::endl;
-    //  }
-    //  if (trig_obj_jpsimuon1 != NULL) {
-    //    std::cout << "jpsimuon1 trig_obj pt: " << trig_obj_jpsimuon1->pt() << std::endl;
-    //  }
-    //}
-
-    for (unsigned int i = 0; i < reco_jpsi.m.size() ; ++i ) {
-      const trigger::TriggerObject* trig_obj_jpsimuon0 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon0.at(i).eta(), reco_jpsi.muon0.at(i).phi());
-      const trigger::TriggerObject* trig_obj_jpsimuon1 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon1.at(i).eta(), reco_jpsi.muon1.at(i).phi());
-      if (trig_obj_jpsimuon0 != NULL) {
-        reco_jpsi.trigger_object_mu0_pt.push_back(trig_obj_jpsimuon0->pt());
-      }
-      else {
-        reco_jpsi.trigger_object_mu0_pt.push_back( -9000.0);
-      }
-      if (trig_obj_jpsimuon1 != NULL) {
-        reco_jpsi.trigger_object_mu1_pt.push_back(trig_obj_jpsimuon1->pt());
-      }
-      else {
-        reco_jpsi.trigger_object_mu1_pt.push_back( -9000.0);
-      }
-    }
-      
-  }
+//  void ZFinderEvent::InitTrigger(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+//    // Get the trigger objects that are closest in dR to our reco electrons
+//    if (e0 != NULL && e1 != NULL) {
+//      const trigger::TriggerObject* trig_obj_0 = GetBestMatchedTriggerObject(iEvent, ALL_TRIGGERS, e0->eta, e0->phi);
+//      const trigger::TriggerObject* trig_obj_1 = GetBestMatchedTriggerObject(iEvent, ALL_TRIGGERS, e1->eta, e1->phi);
+//
+//      // If the electrons are good, set them as our trigger electrons
+//      if (trig_obj_0 != NULL) {
+//        ZFinderElectron* tmp_e0 = AddHLTElectron(*trig_obj_0);
+//        set_e0_trig(tmp_e0);
+//      }
+//      if (trig_obj_1 != NULL) {
+//        ZFinderElectron* tmp_e1 = AddHLTElectron(*trig_obj_1);
+//        set_e1_trig(tmp_e1);
+//      }
+//    }
+//
+//    for (unsigned int i = 0; i < reco_jpsi.m.size() ; ++i ) {
+//      const trigger::TriggerObject* trig_obj_jpsimuon0 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon0.at(i).eta(), reco_jpsi.muon0.at(i).phi());
+//      const trigger::TriggerObject* trig_obj_jpsimuon1 = GetBestMatchedTriggerObject(iEvent, JPSI_TRIGGER, reco_jpsi.muon1.at(i).eta(), reco_jpsi.muon1.at(i).phi());
+//      if (trig_obj_jpsimuon0 != NULL) {
+//        reco_jpsi.trigger_object_mu0_pt.push_back(trig_obj_jpsimuon0->pt());
+//      }
+//      else {
+//        reco_jpsi.trigger_object_mu0_pt.push_back( -9000.0);
+//      }
+//      if (trig_obj_jpsimuon1 != NULL) {
+//        reco_jpsi.trigger_object_mu1_pt.push_back(trig_obj_jpsimuon1->pt());
+//      }
+//      else {
+//        reco_jpsi.trigger_object_mu1_pt.push_back( -9000.0);
+//      }
+//    }
+//      
+//  }
 
   ZFinderElectron* ZFinderEvent::AddRecoElectron(reco::GsfElectron electron) {
     ZFinderElectron* zf_electron = new ZFinderElectron(electron);
@@ -2142,91 +2662,92 @@ namespace zf {
     }
   }
 
-  const trig_dr_vec* ZFinderEvent::GetMatchedTriggerObjects(
-      const edm::Event& iEvent,
-      const std::vector<std::string>& trig_names,
-      const double ETA, const double PHI, const double DR_CUT
-      ) {
-    /*
-     * Find all trigger objects that match a vector of trigger names and
-     * are within some minimum dR of a specified eta and phi. Return them
-     * as a vector of pairs of the object, and the dr.
-     */
-    // If our vector is empty or the first item is blank
-    if (trig_names.size() == 0 || trig_names[0].size() == 0) {
-      return NULL;
-    }
+// commented out since not needed anymore - sleontsi
+//  const trig_dr_vec* ZFinderEvent::GetMatchedTriggerObjects(
+//      const edm::Event& iEvent,
+//      const std::vector<std::string>& trig_names,
+//      const double ETA, const double PHI, const double DR_CUT
+//      ) {
+//    /*
+//     * Find all trigger objects that match a vector of trigger names and
+//     * are within some minimum dR of a specified eta and phi. Return them
+//     * as a vector of pairs of the object, and the dr.
+//     */
+//    // If our vector is empty or the first item is blank
+//    if (trig_names.size() == 0 || trig_names[0].size() == 0) {
+//      return NULL;
+//    }
+//
+//    // Load Trigger Objects
+//    edm::InputTag hltTrigInfoTag("hltTriggerSummaryAOD","","HLT");
+//    edm::Handle<trigger::TriggerEvent> trig_event;
+//
+//    iEvent.getByLabel(hltTrigInfoTag, trig_event);
+//    if (!trig_event.isValid() ){
+//      std::cout << "No valid hltTriggerSummaryAOD." << std::endl;
+//      return NULL;
+//    }
+//
+//    trig_dr_vec* out_v = new trig_dr_vec();
+//    // Loop over triggers, filter the objects from these triggers, and then try to match
+//    for (auto& trig_name : trig_names) {
+//      // Loop over triggers, filter the objects from these triggers, and then try to match
+//      // Grab objects that pass our filter
+//      edm::InputTag filter_tag(trig_name, "", "HLT");
+//      trigger::size_type filter_index = trig_event->filterIndex(filter_tag);
+//      if(filter_index < trig_event->sizeFilters()) { // Check that the filter is in triggerEvent
+//        const trigger::Keys& trig_keys = trig_event->filterKeys(filter_index);
+//        const trigger::TriggerObjectCollection& trig_obj_collection(trig_event->getObjects());
+//        // Get the objects from the trigger keys
+//        for (auto& i_key : trig_keys) {
+//          const trigger::TriggerObject* trig_obj = &trig_obj_collection[i_key];
+//          const double DR = deltaR(ETA, PHI, trig_obj->eta(), trig_obj->phi());
+//          // Do Delta R matching, and assign a new object if we have a
+//          // better match
+//          if (DR < DR_CUT) {
+//            out_v->push_back(std::make_pair(trig_obj, DR));
+//          }
+//        }
+//      }
+//    }
+//    return out_v;
+//  }
 
-    // Load Trigger Objects
-    edm::InputTag hltTrigInfoTag("hltTriggerSummaryAOD","","HLT");
-    edm::Handle<trigger::TriggerEvent> trig_event;
+//  const trigger::TriggerObject* ZFinderEvent::GetBestMatchedTriggerObject(
+//      const edm::Event& iEvent,
+//      const std::vector<std::string>& trig_names,
+//      const double ETA, const double PHI
+//      ) {
+//    /* Given the ETA and PHI of a particle, and a list of trigger paths,
+//     * returns the trigger object from those paths that is closest to the
+//     * given coordinates. */
+//    const double MIN_DR = 0.3;
+//    const trig_dr_vec* trig_vec = GetMatchedTriggerObjects(iEvent, trig_names, ETA, PHI, MIN_DR);
+//
+//    double best_dr = 1.;
+//    const trigger::TriggerObject* trig_obj = NULL;
+//    for (auto& i_obj : *trig_vec) {
+//      if (i_obj.second < best_dr) {
+//        best_dr = i_obj.second;
+//        trig_obj = i_obj.first;
+//      }
+//    }
+//    return trig_obj;
+//  }
 
-    iEvent.getByLabel(hltTrigInfoTag, trig_event);
-    if (!trig_event.isValid() ){
-      std::cout << "No valid hltTriggerSummaryAOD." << std::endl;
-      return NULL;
-    }
-
-    trig_dr_vec* out_v = new trig_dr_vec();
-    // Loop over triggers, filter the objects from these triggers, and then try to match
-    for (auto& trig_name : trig_names) {
-      // Loop over triggers, filter the objects from these triggers, and then try to match
-      // Grab objects that pass our filter
-      edm::InputTag filter_tag(trig_name, "", "HLT");
-      trigger::size_type filter_index = trig_event->filterIndex(filter_tag);
-      if(filter_index < trig_event->sizeFilters()) { // Check that the filter is in triggerEvent
-        const trigger::Keys& trig_keys = trig_event->filterKeys(filter_index);
-        const trigger::TriggerObjectCollection& trig_obj_collection(trig_event->getObjects());
-        // Get the objects from the trigger keys
-        for (auto& i_key : trig_keys) {
-          const trigger::TriggerObject* trig_obj = &trig_obj_collection[i_key];
-          const double DR = deltaR(ETA, PHI, trig_obj->eta(), trig_obj->phi());
-          // Do Delta R matching, and assign a new object if we have a
-          // better match
-          if (DR < DR_CUT) {
-            out_v->push_back(std::make_pair(trig_obj, DR));
-          }
-        }
-      }
-    }
-    return out_v;
-  }
-
-  const trigger::TriggerObject* ZFinderEvent::GetBestMatchedTriggerObject(
-      const edm::Event& iEvent,
-      const std::vector<std::string>& trig_names,
-      const double ETA, const double PHI
-      ) {
-    /* Given the ETA and PHI of a particle, and a list of trigger paths,
-     * returns the trigger object from those paths that is closest to the
-     * given coordinates. */
-    const double MIN_DR = 0.3;
-    const trig_dr_vec* trig_vec = GetMatchedTriggerObjects(iEvent, trig_names, ETA, PHI, MIN_DR);
-
-    double best_dr = 1.;
-    const trigger::TriggerObject* trig_obj = NULL;
-    for (auto& i_obj : *trig_vec) {
-      if (i_obj.second < best_dr) {
-        best_dr = i_obj.second;
-        trig_obj = i_obj.first;
-      }
-    }
-    return trig_obj;
-  }
-
-  bool ZFinderEvent::TriggerMatch(
-      const edm::Event& iEvent,
-      const std::vector<std::string>& trig_names,
-      const double ETA, const double PHI, const double DR_CUT
-      ) {
-    // Get the vector and see if there are objects
-    const trig_dr_vec* zev = GetMatchedTriggerObjects(iEvent, trig_names, ETA, PHI, DR_CUT);
-    if (zev != NULL && zev->size() >= 1) {
-      return true;
-    } else {
-      return false;
-    }
-  }
+//  bool ZFinderEvent::TriggerMatch(
+//      const edm::Event& iEvent,
+//      const std::vector<std::string>& trig_names,
+//      const double ETA, const double PHI, const double DR_CUT
+//      ) {
+//    // Get the vector and see if there are objects
+//    const trig_dr_vec* zev = GetMatchedTriggerObjects(iEvent, trig_names, ETA, PHI, DR_CUT);
+//    if (zev != NULL && zev->size() >= 1) {
+//      return true;
+//    } else {
+//      return false;
+//    }
+//  }
 
   double ZFinderEvent::JpsiMuonTruthMatch(const reco::Muon &muon)
   {

@@ -17,7 +17,7 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1000  # Report status ever 10
 
 # Number of events from each file to process. It should be -1 (all) when
 # running for an analysis
-N_EVENTS_TO_PROCESS = 1000
+N_EVENTS_TO_PROCESS = -1
 if N_EVENTS_TO_PROCESS != -1:
     print "NOT RUNNING ON ALL EVENTS IN THE FILE!"
 process.maxEvents = cms.untracked.PSet(
@@ -29,11 +29,28 @@ process.options = cms.untracked.PSet(
 )
 
 process.source = cms.Source("PoolSource",
-# di-muon AOD
+# data di-muon
 #    fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012C/DoubleMuParked/AOD/22Jan2013-v1/10000/0002ACB4-C96C-E211-A96F-20CF3027A628.root')
-# di-electron AOD
-  fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012C/DoubleElectron/AOD/22Jan2013-v1/20000/00B50FA7-E867-E211-9F1B-003048FFD754.root')
+#    fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012C/DoubleMuParked/AOD/22Jan2013-v1/10000/001B9F9E-C46C-E211-B700-001EC9D80789.root')
+#    fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012B/DoubleMuParked/AOD/22Jan2013-v1/20001/7A39E5AC-8069-E211-9285-00259073E47E.root')
+
+# mc Z->mumu mumu
+#     fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/mc/Summer12_DR53X/ZZTo4mu_8TeV-powheg-pythia6/AODSIM/PU_RD1_START53_V7N-v1/20000/0827DEB7-EED0-E211-AB1A-00266CFFC13C.root')
+#     fileNames = cms.untracked.vstring('file:/afs/cern.ch/work/s/sleontsi/ZJpsill/021F47B9-3CD1-E211-AAD6-00266CFFC598.root')
+#      fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/mc/Summer12_DR53X/ZZTo4mu_8TeV-powheg-pythia6/AODSIM/PU_RD1_START53_V7N-v1/20000/888B9487-06D1-E211-88BE-AC162DABBBA0.root')
+
+# mc Z->ee ee
+#     fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/mc/Summer12_DR53X/ZZTo4e_8TeV-powheg-pythia6/AODSIM/PU_RD1_START53_V7N-v2/20000/081393FA-22D2-E211-A87D-008CFA05206C.root')
+
+# mc Z->ee+mumu
+#    fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/mc/Summer12_DR53X/ZZTo2e2mu_8TeV-powheg-pythia6/AODSIM/PU_RD1_START53_V7N-v2/10000/02A8AB2C-7DD0-E211-9200-00266CFFC7CC.root')
+#    fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/mc/Summer12_DR53X/ZZTo2e2mu_8TeV-powheg-pythia6/AODSIM/PU_RD1_START53_V7N-v2/10000/02A8AB2C-7DD0-E211-9200-00266CFFC7CC.root')
+
+# data di-electron AOD
+  fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012A/DoubleElectron/AOD/22Jan2013-v1/20000/0081344B-7C67-E211-9A3D-002618943831.root')
 #  fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012C/DoubleElectron/AOD/22Jan2013-v1/20000/1E64EF26-0268-E211-9B23-002618943882.root')
+#  fileNames = cms.untracked.vstring('root://xrootd.unl.edu//store/data/Run2012C/DoubleElectron/AOD/22Jan2013-v1/20000/00B50FA7-E867-E211-9F1B-003048FFD754.root')
+
 )
 
 process.TFileService = cms.Service("TFileService",
@@ -43,12 +60,15 @@ process.TFileService = cms.Service("TFileService",
 # Run only on lumis specified in the lumi file
 # Recipe from:
 # https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuidePythonTips#Use_a_JSON_file_of_good_lumi_sec
+
+####################### comment below to exclude json matching
 from FWCore.ParameterSet.Types import untracked, VLuminosityBlockRange
 from FWCore.PythonUtilities.LumiList import LumiList
-##json_file for electrons
-json_file = "/afs/cern.ch/user/s/sleontsi/Files/Cert_Run2012ABCD_22Jan2013ReReco.json" # File location
+#json_file = "/afs/cern.ch/user/s/sleontsi/Files/Cert_Run2012ABCD_22Jan2013ReReco.json" # File location
+#json_file = "/afs/cern.ch/user/s/sleontsi/Files/Cert_190456-208686_8TeV_22Jan2013ReReco_Collisions12_JSON_MuonPhys.txt" # Muon JSON File location
+json_file = "/afs/cern.ch/user/s/sleontsi/Files/Cert_190456-208686_8TeV_22Jan2013ReReco_Collisions12_JSON.txt" # JSON File location
 run_2012abcd_lumis = LumiList(filename = json_file).getCMSSWString().split(',')
-process.source.lumisToProcess = untracked(VLuminosityBlockRange(run_2012abcd_lumis))
+#process.source.lumisToProcess = untracked(VLuminosityBlockRange(run_2012abcd_lumis))
 
 #
 # electron regression
